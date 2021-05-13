@@ -49,7 +49,8 @@ const Map: React.FC<MapProps> = (props: MapProps) => {
             }
 
             const layerProps = currSpec.layers[layerIndex];
-            currSpec.layers[layerIndex] = {
+            currSpec.layers[layerIndex]
+             = {
                 ...layerProps,
                 ...newLayerProps,
             };
