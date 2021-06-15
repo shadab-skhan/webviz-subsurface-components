@@ -191,7 +191,11 @@ export default class WellsLayer extends CompositeLayer<
         return layers;
     }
 
-    getPickingInfo({ info }) {
+    getPickingInfo({
+        info,
+    }: {
+        info: PickInfo<LogCurveDataType>;
+    }): WellsPickInfo {
         if (info.object == null || info.object.data == undefined) return info;
 
         const trajectory = info.object.data[0];
