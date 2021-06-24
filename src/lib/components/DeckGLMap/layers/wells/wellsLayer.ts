@@ -2,7 +2,8 @@ import { CompositeLayer } from "@deck.gl/core";
 import { CompositeLayerProps } from "@deck.gl/core/lib/composite-layer";
 import { GeoJsonLayer, PathLayer } from "@deck.gl/layers";
 import { RGBAColor } from "@deck.gl/core/utils/color";
-import { PickInfo } from "@deck.gl/core/lib/deck";
+import { PickInfo } from "deck.gl";
+import { subtract, distance, dot } from "mathjs";
 import { interpolateRgbBasis } from "d3-interpolate";
 import { color } from "d3-color";
 
@@ -29,6 +30,7 @@ export interface WellsLayerProps<D> extends CompositeLayerProps<D> {
     selectionEnabled: boolean;
     logData: string | LogCurveDataType;
     logName: string;
+    logrunName: string;
     logRadius: number;
     logCurves: boolean;
 }
@@ -44,6 +46,15 @@ const COLOR_MAP: RGBAColor[] = [
     [125, 255, 125, 255],
     [255, 125, 125, 255],
 ];
+
+function getLogPath(d: LogCurveDataType, logrun_name: string): number[] {
+    if (d?.header?.name?.toLowerCase() === logrun_name?.toLowerCase()) {
+        if (d?.data) {
+            return d.data[0];
+        }
+    }
+    return [];
+}
 
 function getLogIDByName(d: LogCurveDataType, log_name: string): number | null {
     return d?.curves?.findIndex(
@@ -91,6 +102,48 @@ function squared_distance(a, b): number {
     const dx = a[0] - b[0];
     const dy = a[1] - b[1];
     return dx * dx + dy * dy;
+}
+
+function getMd(pickInfo): number | null {
+    if (!pickInfo.object.properties || !pickInfo.object.geometry) return null;
+
+    const measured_depths = pickInfo.object.properties.md[0];
+    const trajectory = pickInfo.object.geometry.geometries[1].coordinates;
+
+    // Get squared distance from survey point to picked point.
+    const d2 = trajectory.map((element) =>
+        squared_distance(element, pickInfo.coordinate)
+    );
+
+    // Enumerate squared distances.
+    let index: number[] = Array.from(d2.entries());
+
+    // Sort by squared distance.
+    index = index.sort((a: number, b: number) => a[1] - b[1]);
+
+    // Get the nearest indexes.
+    const index0 = index[0][0];
+    const index1 = index[1][0];
+
+    // Get the nearest MD values.
+    const md0 = measured_depths[index0];
+    const md1 = measured_depths[index1];
+
+    // Get the nearest survey points.
+    const survey0 = trajectory[index0];
+    const survey1 = trajectory[index1];
+
+    const dv = distance(survey0, survey1) as number;
+
+    // Calculate the scalar projection onto segment.
+    const v0 = subtract(pickInfo.coordinate, survey0);
+    const v1 = subtract(survey1, survey0);
+    const scalar_projection: number = dot(v0 as number[], v1 as number[]) / dv;
+
+    // Interpolate MD value.
+    const c0 = scalar_projection / dv;
+    const c1 = dv - c0;
+    return (md0 * c1 + md1 * c0) / dv;
 }
 
 export interface WellsPickInfo extends PickInfo<unknown> {
@@ -168,7 +221,8 @@ export default class WellsLayer extends CompositeLayer<
                 widthScale: 10,
                 widthMinPixels: 1,
                 miterLimit: 100,
-                getPath: (d: LogCurveDataType): number[] => d.data[0],
+                getPath: (d: LogCurveDataType): number[] =>
+                    getLogPath(d, this.props.logrunName),
                 getColor: (d: LogCurveDataType): RGBAColor[] =>
                     getLogColor(d, this.props.logName),
                 getWidth: (d: LogCurveDataType): number | number[] | null =>
@@ -196,6 +250,17 @@ export default class WellsLayer extends CompositeLayer<
     }: {
         info: PickInfo<unknown>;
     }): WellsPickInfo | PickInfo<unknown> {
+        if (!info.object) return info;
+
+        // Return MD if a trajectory has been picked.
+        const measured_depth = getMd(info);
+        if (measured_depth != null) {
+            return {
+                ...info,
+                propertyValue: measured_depth,
+            };
+        }
+
         if (!info.object || !(info.object as LogCurveDataType)?.data)
             return info;
 
