@@ -15,7 +15,13 @@ with open("README.md", "r") as fh:
 with open(os.path.join("webviz_subsurface_components", "package.json")) as f:
     package = json.load(f)
 
-package_name = package["name"].replace(" ", "_").replace("-", "_")
+package_name = (
+    package["name"]
+    .replace(" ", "_")
+    .replace("-", "_")
+    .replace("/", "_")
+    .replace("@", "")
+)
 
 INSTALL_REQUIRES = ["dash>=1.6"]
 
@@ -29,6 +35,8 @@ TESTS_REQUIRE = [
     "pylint>=2.4",
     "scipy>=1.2",
     "selenium>=3.141",
+    "jsonpatch>=1.32",
+    "jsonpointer>=2.1",
 ]
 
 # 'dash[testing]' to be added in TEST_REQUIRE when
