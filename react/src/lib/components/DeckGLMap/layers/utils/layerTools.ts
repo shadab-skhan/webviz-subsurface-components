@@ -11,9 +11,14 @@ export interface LayerPickInfo extends PickInfo<unknown> {
     property: PropertyDataType | null;
 }
 
+// Generate a patch from a layer and it's new props and call setSpecPatch with it,
+// to update the map parent from the layers.
+// Usually this would be called from a layer,
+// e.g.: patchLayerProps(this, {...this.props, updatedProp: newValue});
 export function patchLayerProps<
-    L extends Layer<unknown, P>,
-    P extends LayerProps<unknown>
+    D,
+    P extends LayerProps<D> = LayerProps<D>,
+    L extends Layer<D, P> = Layer<D, P>
 >(layer: L, newProps: P): void {
     const layerPath = "/layers/[" + layer.id + "]";
     const patch = jsonpatch.compare(layer.props, newProps);

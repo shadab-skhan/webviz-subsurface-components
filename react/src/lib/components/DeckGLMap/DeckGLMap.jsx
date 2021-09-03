@@ -2,8 +2,7 @@ import * as jsonpatch from "fast-json-patch";
 import { cloneDeep } from "lodash";
 import PropTypes from "prop-types";
 import * as React from "react";
-import InfoCard from "./components/InfoCard";
-import Map from "./Map";
+import Map from "./components/Map";
 
 function _idsToIndices(doc, path) {
     // The path looks something like this: `/layers/[layer-id]/property`,
@@ -66,6 +65,11 @@ DeckGLMap.defaultProps = {
         multiPicking: true,
         pickDepth: 10,
     },
+    scale: {
+        visible: true,
+        incrementValue: 100,
+        widthPerUnit: 100,
+    },
 };
 
 function DeckGLMap({
@@ -74,8 +78,11 @@ function DeckGLMap({
     deckglSpecBase,
     deckglSpecPatch,
     coords,
+    scale,
+    coordinateUnit,
     setProps,
 }) {
+    // Map specification formed from applying the deckglSpecPatch to deckglSpecBase.
     let [patchedSpec, setPatchedSpec] = React.useState(null);
 
     React.useEffect(() => {
@@ -88,6 +95,7 @@ function DeckGLMap({
         );
     }, [deckglSpecBase, deckglSpecPatch]);
 
+    // Hacky way of disabling well selection when drawing.
     React.useEffect(() => {
         if (!patchedSpec) return;
 
@@ -112,23 +120,9 @@ function DeckGLMap({
         }
     }, [patchedSpec]);
 
-    const [hoverInfo, setHoverInfo] = React.useState([]);
-    const onHover = React.useCallback(
-        (pickInfo, event) => {
-            if (coords.multiPicking && pickInfo.layer) {
-                const infos = pickInfo.layer.context.deck.pickMultipleObjects({
-                    x: event.offsetCenter.x,
-                    y: event.offsetCenter.y,
-                    radius: 1,
-                    depth: coords.pickDepth,
-                });
-                setHoverInfo(infos);
-            } else {
-                setHoverInfo([pickInfo]);
-            }
-        },
-        [coords]
-    );
+    // This callback is used as a mechanism to update the component from the layers or toolbar.
+    // The changes done in a layer, for example, are bundled into a patch
+    // and sent to the parent component via setProps. (See layers/utils/layerTools.ts)
     const setSpecPatch = React.useCallback(
         (patch) => {
             setProps({
@@ -141,19 +135,15 @@ function DeckGLMap({
 
     return (
         patchedSpec && (
-            <div
-                style={{ height: "100%", width: "100%", position: "relative" }}
-            >
-                <Map
-                    id={id}
-                    resources={resources}
-                    deckglSpec={patchedSpec}
-                    setSpecPatch={setSpecPatch}
-                    onHover={onHover}
-                >
-                    {coords.visible ? <InfoCard pickInfos={hoverInfo} /> : null}
-                </Map>
-            </div>
+            <Map
+                id={id}
+                resources={resources}
+                deckglSpec={patchedSpec}
+                setSpecPatch={setSpecPatch}
+                coords={coords}
+                scale={scale}
+                coordinateUnit={coordinateUnit}
+            />
         )
     );
 }
@@ -178,7 +168,7 @@ DeckGLMap.propTypes = {
     /**
      * JSON object describing the map structure to which deckglSpecPatch will be
      * applied in order to form the final map specification.
-     * More detailes about the specification format can be found here:
+     * More details about the specification format can be found here:
      * https://deck.gl/docs/api-reference/json/conversion-reference
      */
     deckglSpecBase: PropTypes.object,
@@ -188,18 +178,53 @@ DeckGLMap.propTypes = {
      * This split (base + patch) allows doing partial updates to the map
      * while keeping the map state in the Dash store, as well as
      * making it easier for the Dash component user to figure out what changed
-     * in the map spec when recieving a callback on the python side.
+     * in the map spec when receiving a callback on the python side.
      */
     deckglSpecPatch: PropTypes.arrayOf(PropTypes.object),
 
     /**
-     * Parameters for the coordinates component
+     * Parameters for the InfoCard component
      */
     coords: PropTypes.shape({
+        /**
+         * Toggle component visibility.
+         */
         visible: PropTypes.bool,
+        /**
+         * Enable or disable multi picking. Might have a performance penalty.
+         * See https://deck.gl/docs/api-reference/core/deck#pickmultipleobjects
+         */
         multiPicking: PropTypes.bool,
+        /**
+         * Number of objects to pick. The more objects picked, the more picking operations will be done.
+         * See https://deck.gl/docs/api-reference/core/deck#pickmultipleobjects
+         */
         pickDepth: PropTypes.number,
     }),
+
+    /**
+     * Parameters for the Distance Scale component
+     */
+    scale: PropTypes.shape({
+        /**
+         * Toggle component visibility.
+         */
+        visible: PropTypes.bool,
+        /**
+         * Increment value for the scale.
+         */
+        incrementValue: PropTypes.number,
+        /**
+         * Scale bar width in pixels per unit value.
+         */
+        widthPerUnit: PropTypes.number,
+    }),
+
+    /**
+     * Parameters for the Distance Scale component
+     * Unit for the scale ruler
+     */
+    coordinateUnit: PropTypes.string,
 
     /**
      * For reacting to prop changes

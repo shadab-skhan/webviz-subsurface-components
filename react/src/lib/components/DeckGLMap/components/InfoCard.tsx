@@ -22,7 +22,11 @@ interface InfoCardDataType {
     properties: PropertyDataType[];
 }
 
-interface InfoCardProps {
+export interface InfoCardProps {
+    /**
+     * List of JSON object describing picking information of layers
+     * that are under the cursor.
+     */
     pickInfos: PickInfo<unknown>[];
 }
 
@@ -132,7 +136,6 @@ const InfoCard: React.FC<InfoCardProps> = (props: InfoCardProps) => {
             topObject.coordinate === undefined ||
             topObject.coordinate.length < 2
         ) {
-            setInfoCardData(null);
             return;
         }
 

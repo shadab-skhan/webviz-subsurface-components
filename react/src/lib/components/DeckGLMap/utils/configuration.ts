@@ -1,4 +1,5 @@
 // This configuration object determines which deck.gl classes are accessible in the serialized json
+// See https://deck.gl/docs/api-reference/json/overview for more details.
 
 import {
     COORDINATE_SYSTEM,
@@ -17,7 +18,7 @@ import { EditableGeoJsonLayer } from "@nebula.gl/layers";
 import { registerLoaders } from "@loaders.gl/core";
 import GL from "@luma.gl/constants";
 
-import * as CustomLayers from "./layers";
+import * as CustomLayers from "../layers";
 
 // Note: deck already registers JSONLoader...
 registerLoaders([]);
