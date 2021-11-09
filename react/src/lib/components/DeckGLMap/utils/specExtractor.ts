@@ -1,28 +1,41 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { isEmpty } from "lodash";
-import { DrawMode } from "../redux/types";
+import { LayerProps } from "@deck.gl/core/lib/layer";
+import {
+    ToggleTypeProps,
+    MenuTypeProps,
+    NumericTypeProps,
+    SliderTypeProps,
+} from "../redux/types";
 
-export const getLayerVisibility = (
-    spec: Record<string, unknown>
-): Record<string, boolean> => {
-    return !isEmpty(spec) && "layers" in spec
-        ? (spec["layers"] as any[]).reduce(
-              (acc, current) => ({
-                  ...acc,
-                  [current.id]:
-                      current.visible === undefined || current.visible,
-              }),
-              {}
-          )
-        : {};
+// return true if layer props are displayable as defined in ../redux/types.tsx
+export const getPropVisibility = (
+    layers: LayerProps<unknown>[],
+    layerId: string
+): boolean => {
+    if (!layers.length) return false;
+    const layer_props = (layers as any[]).find((l) => l.id === layerId);
+    if (!layer_props) return false;
+
+    const prop_types = [
+        ...MenuTypeProps,
+        ...NumericTypeProps,
+        ...SliderTypeProps,
+        ...ToggleTypeProps,
+    ];
+    const visibility = prop_types.reduce(
+        (acc, current) => acc || current.id in layer_props,
+        false
+    );
+    return visibility;
 };
 
-export const getDrawMode = (
-    spec: Record<string, unknown>,
+// returns layer properties
+export const getLayerProps = (
+    layers: LayerProps<unknown>[],
     layerId: string
-): DrawMode | null => {
-    if (isEmpty(spec) || !("layers" in spec)) return null;
-    const layer = (spec["layers"] as any[]).find((l) => l.id === layerId);
-    if (!layer || layer["@@type"] !== "DrawingLayer") return null;
-    return layer.mode;
+): Record<string, unknown> | null => {
+    if (!layers?.length) return null;
+    const layer_props = (layers as any[]).find((l) => l.id === layerId);
+    return isEmpty(layer_props) ? null : layer_props;
 };

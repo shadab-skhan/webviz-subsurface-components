@@ -10,8 +10,9 @@ import {
     PropertyMapPickInfo,
     ValueDecoder,
 } from "../utils/propertyMapTools";
+import { getModelMatrix } from "../utils/layerTools";
 
-import fsColormap from "./colormap.fs.glsl";
+import fsColormap from "!!raw-loader!./colormap.fs.glsl";
 
 const DEFAULT_TEXTURE_PARAMETERS = {
     [GL.TEXTURE_MIN_FILTER]: GL.LINEAR_MIPMAP_LINEAR,
@@ -47,13 +48,24 @@ export interface ColormapLayerProps<D> extends BitmapLayerProps<D> {
     // Min and max property values.
     valueRange: [number, number];
 
+    // Use color map in this range.
+    colorMapRange: [number, number];
+
     // See ValueDecoder in propertyMapTools.ts
     valueDecoder: ValueDecoder;
+
+    // Rotates image around bounds upper left corner counterclockwise in degrees.
+    rotDeg: number;
 }
 
 const defaultProps = {
+    name: "Property map",
+    id: "colormap-layer",
+    pickable: true,
+    visible: true,
     colormap: { type: "object", value: null, async: true },
     valueRange: { type: "array" },
+    colorMapRange: { type: "array" },
     valueDecoder: {
         type: "object",
         value: {
@@ -64,6 +76,7 @@ const defaultProps = {
             step: 0,
         },
     },
+    rotDeg: 0,
 };
 
 export default class ColormapLayer extends BitmapLayer<
@@ -81,8 +94,21 @@ export default class ColormapLayer extends BitmapLayer<
                 ...defaultProps.valueDecoder.value,
                 ...moduleParameters.valueDecoder,
             },
+            modelMatrix: getModelMatrix(
+                this.props.rotDeg,
+                this.props.bounds[0] as number, // Rotate around upper left corner of bounds
+                this.props.bounds[3] as number
+            ),
         };
         super.setModuleParameters(mergedModuleParams);
+
+        const valueRangeMin = this.props.valueRange[0] ?? 0.0;
+        const valueRangeMax = this.props.valueRange[1] ?? 1.0;
+
+        // If specified color map will extend from colorMapRangeMin to colorMapRangeMax.
+        // Otherwise it will extend from valueRangeMin to valueRangeMax.
+        const colorMapRangeMin = this.props.colorMapRange?.[0] ?? valueRangeMin;
+        const colorMapRangeMax = this.props.colorMapRange?.[1] ?? valueRangeMax;
 
         super.draw({
             uniforms: {
@@ -92,6 +118,10 @@ export default class ColormapLayer extends BitmapLayer<
                     data: this.props.colormap,
                     parameters: DEFAULT_TEXTURE_PARAMETERS,
                 }),
+                valueRangeMin,
+                valueRangeMax,
+                colorMapRangeMin,
+                colorMapRangeMax,
             },
             moduleParameters: mergedModuleParams,
         });

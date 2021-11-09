@@ -1,4 +1,8 @@
 import { specSlice } from "./reducer";
 
-export const { setSpec, updateVisibleLayers, updateDrawingMode } =
-    specSlice.actions;
+export const {
+    setLayers,
+    updateVisibleLayers,
+    updateDrawingMode,
+    updateLayerProp,
+} = specSlice.actions;

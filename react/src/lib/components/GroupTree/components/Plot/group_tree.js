@@ -25,34 +25,73 @@ export default class GroupTree {
      * @param {group-tree-data} tree_data
      * @param defaultFlowrate
      */
-    constructor(dom_element_id, tree_data, defaultFlowrate, currentDateTime) {
+    constructor(
+        dom_element_id,
+        tree_data,
+        defaultFlowrate,
+        defaultNodeInfo,
+        currentDateTime,
+        edge_options,
+        node_options
+    ) {
         // Add "#" if missing.
         if (dom_element_id.charAt(0) !== "#") {
             dom_element_id = "#" + dom_element_id;
         }
 
+        // Map from property to [label/name, unit]
+        const options = [...edge_options, ...node_options];
+        this._propertyToLabelMap = new Map();
+        options.forEach((key) => {
+            this._propertyToLabelMap.set(key.name, [
+                key.label ?? "",
+                key.unit ?? "",
+            ]);
+        });
+
+        // Represent possible empty data by single empty node.
+        if (tree_data.length === 0) {
+            currentDateTime = "";
+            tree_data = [
+                {
+                    dates: [currentDateTime],
+                    tree: {
+                        node_label: "NO DATA",
+                        edge_label: "NO DATA",
+                        node_data: {},
+                        edge_data: {},
+                    },
+                },
+            ];
+        }
+
         this._currentFlowrate = defaultFlowrate;
+        this._currentNodeInfo = defaultNodeInfo;
         this._currentDateTime = currentDateTime;
+
         this._transitionTime = 200;
 
         const tree_values = {};
+
         tree_data.map((datedTree) => {
             let tree = datedTree.tree;
-            d3.hierarchy(tree, (d) => d.children).each((t) =>
-                Object.keys(t.data).forEach((key) => {
+            d3.hierarchy(tree, (d) => d.children).each((node) => {
+                // edge_data
+                Object.keys(node.data.edge_data).forEach((key) => {
                     if (!tree_values[key]) {
                         tree_values[key] = [];
                     }
-                    tree_values[key].push(t.data[key]);
-                })
-            );
+                    tree_values[key].push(node.data.edge_data[key]);
+                });
+            });
         });
 
         this._path_scale = new Map();
         Object.keys(tree_values).forEach((key) => {
+            const extent = [0, d3.max(tree_values[key].flat())];
             this._path_scale[key] = d3
                 .scaleLinear()
-                .domain(d3.extent(tree_values[key].flat()))
+                .domain(extent)
                 .range([2, 100]);
         });
 
@@ -67,7 +106,10 @@ export default class GroupTree {
         };
 
         const height = 700 - margin.top - margin.bottom;
-        this._width = +this._width - margin.left - margin.right;
+        this._width = this._width - margin.left - margin.right;
+
+        // Clear possible existing svg's.
+        d3.select(dom_element_id).selectAll("svg").remove();
 
         this._svg = d3
             .select(dom_element_id)
@@ -85,7 +127,7 @@ export default class GroupTree {
 
         this._currentTree = {};
 
-        this._updateCalled = false;
+        this.update(currentDateTime);
     }
 
     /**
@@ -95,7 +137,9 @@ export default class GroupTree {
     static initHierarchies(tree_data, height) {
         // generate the node-id used to match in the enter, update and exit selections
         const getId = (d) =>
-            d.parent === null ? d.data.name : `${d.parent.id}_${d.data.name}`;
+            d.parent === null
+                ? d.data.node_label
+                : `${d.parent.id}_${d.data.node_label}`;
 
         tree_data.map((datedTree) => {
             let tree = datedTree.tree;
@@ -122,14 +166,16 @@ export default class GroupTree {
      * @param flowrate - key identifying the flowrate of the incoming edge
      */
     set flowrate(flowrate) {
+        this._currentFlowrate = flowrate;
+
         const current_tree_index = this._data.findIndex((e) => {
             return e.dates.includes(this._currentDateTime);
         });
+
         const date_index = this._data[current_tree_index].dates.indexOf(
             this._currentDateTime
         );
 
-        this._currentFlowrate = flowrate;
         this._svg
             .selectAll("path.link")
             .transition()
@@ -139,19 +185,56 @@ export default class GroupTree {
                 () => `link grouptree_link grouptree_link__${flowrate}`
             )
             .style("stroke-width", (d) =>
-                this.getEdgeStrokeWidth(flowrate, d.data[flowrate][date_index])
+                this.getEdgeStrokeWidth(
+                    flowrate,
+                    d.data.edge_data[flowrate]?.[date_index] ?? 0
+                )
             )
-            .style("stroke-dasharray", (d) =>
-                d.data[flowrate][date_index] > 0 ? "none" : "5,5"
-            );
+            .style("stroke-dasharray", (d) => {
+                return (d.data.edge_data[flowrate]?.[date_index] ?? 0) > 0
+                    ? "none"
+                    : "5,5";
+            });
     }
 
     get flowrate() {
         return this._currentFlowrate;
     }
 
+    set nodeinfo(nodeinfo) {
+        this._currentNodeInfo = nodeinfo;
+
+        const current_tree_index = this._data.findIndex((e) => {
+            return e.dates.includes(this._currentDateTime);
+        });
+
+        const date_index = this._data[current_tree_index].dates.indexOf(
+            this._currentDateTime
+        );
+
+        this._svg
+            .selectAll(".grouptree__pressurelabel")
+            .text(
+                (d) =>
+                    d.data.node_data?.[nodeinfo]?.[date_index]?.toFixed(0) ??
+                    "NA"
+            );
+
+        this._svg.selectAll(".grouptree__pressureunit").text(() => {
+            const t = this._propertyToLabelMap.get(nodeinfo) ?? ["", ""];
+            return t[1];
+        });
+    }
+
+    get nodeinfo() {
+        return this._currentNodeInfo;
+    }
+
     getEdgeStrokeWidth(key, val) {
-        const normalized = this._path_scale[key](val);
+        const normalized =
+            this._path_scale[key] !== undefined
+                ? this._path_scale[key](val ?? 0)
+                : 2;
         return `${normalized}px`;
     }
 
@@ -165,27 +248,15 @@ export default class GroupTree {
     update(newDateTime) {
         const self = this;
 
-        const current_tree_index = self._data.findIndex((e) => {
-            return e.dates.includes(self._currentDateTime);
-        });
+        self._currentDateTime = newDateTime;
 
         const new_tree_index = self._data.findIndex((e) => {
             return e.dates.includes(newDateTime);
         });
 
-        self._currentDateTime = newDateTime;
-
-        // No need to update if the tree is the same for this new timestep.
-        if (current_tree_index == new_tree_index && self._updateCalled) {
-            self._updateCalled = true;
-            self.flowrate = self._currentFlowrate;
-            return;
-        }
-
         const root = self._data[new_tree_index];
 
-        self._updateCalled = true;
-        const date_index = root.dates.indexOf(self._currentDateTime); // used to look up pressure and oil/water/gas rates.
+        const date_index = root.dates.indexOf(self._currentDateTime);
 
         /**
          * Assigns y coordinates to all tree nodes in the rendered tree.
@@ -217,7 +288,7 @@ export default class GroupTree {
 
         function getClosestVisibleParentStartCoordinates(d) {
             const p = findClosestVisibleParent(d);
-            return { x: p.x0, y: p.y0 };
+            return { x: p.x0 ?? 0, y: p.y0 ?? 0 };
         }
 
         function getClosestVisibleParentEndCoordinates(d) {
@@ -238,7 +309,6 @@ export default class GroupTree {
                 node._children = null;
             }
 
-            self._updateCalled = false; // force update
             self.update(self._currentDateTime);
         }
 
@@ -262,6 +332,28 @@ export default class GroupTree {
                 d.x0 = d.x;
                 d.y0 = d.y;
             });
+        }
+
+        function getToolTipText(data, date_index) {
+            if (data === undefined || date_index === undefined) {
+                return "";
+            }
+
+            const propNames = Object.keys(data);
+            let text = "";
+            propNames.forEach(function (s) {
+                const t = self._propertyToLabelMap.get(s) ?? [s, ""];
+                const pre = t[0];
+                const unit = t[1];
+                text +=
+                    pre +
+                    " " +
+                    (data[s]?.[date_index]?.toFixed(0) ?? "") +
+                    " " +
+                    unit +
+                    "\n";
+            });
+            return text;
         }
 
         /**
@@ -298,7 +390,7 @@ export default class GroupTree {
          *
          * @param nodes - list of nodes in a tree
          */
-        function updateNodes(nodes) {
+        function updateNodes(nodes, nodeinfo) {
             const node = self._svg.selectAll("g.node").data(nodes, (d) => d.id);
 
             const nodeEnter = node
@@ -330,7 +422,7 @@ export default class GroupTree {
                 .attr("text-anchor", (d) =>
                     d.children || d._children ? "end" : "start"
                 )
-                .text((d) => d.data.name);
+                .text((d) => d.data.node_label);
 
             nodeEnter
                 .append("text")
@@ -338,7 +430,11 @@ export default class GroupTree {
                 .attr("x", 0)
                 .attr("dy", "-.05em")
                 .attr("text-anchor", "middle")
-                .text((d) => d.data.pressure[date_index].toFixed(0));
+                .text(
+                    (d) =>
+                        d.data.node_data[nodeinfo]?.[date_index]?.toFixed(0) ??
+                        "NA"
+                );
 
             nodeEnter
                 .append("text")
@@ -347,13 +443,34 @@ export default class GroupTree {
                 .attr("dy", ".04em")
                 .attr("dominant-baseline", "text-before-edge")
                 .attr("text-anchor", "middle")
-                .text("bar");
+                .text(() => {
+                    const t = self._propertyToLabelMap.get(nodeinfo) ?? [
+                        "",
+                        "",
+                    ];
+                    return t[1];
+                });
+
+            nodeEnter
+                .append("title")
+                .text((d) => getToolTipText(d.data.node_data, date_index));
 
             const nodeUpdate = nodeEnter.merge(node);
 
+            // Nodes from earlier exit selection may reenter if transition is interupted. Restore state.
+            nodeUpdate
+                .filter(".exiting")
+                .interrupt()
+                .classed("exiting", false)
+                .attr("opacity", 1);
+
             nodeUpdate
                 .select("text.grouptree__pressurelabel")
-                .text((d) => d.data.pressure[date_index].toFixed(0));
+                .text(
+                    (d) =>
+                        d.data.node_data[nodeinfo]?.[date_index]?.toFixed(0) ??
+                        "NA"
+                );
 
             nodeUpdate
                 .transition()
@@ -375,8 +492,12 @@ export default class GroupTree {
                 .duration(self._transitionTime)
                 .attr("r", 15);
 
-            const nodeExit = node
-                .exit()
+            nodeUpdate
+                .select("title")
+                .text((d) => getToolTipText(d.data.node_data, date_index));
+
+            node.exit()
+                .classed("exiting", true)
                 .attr("opacity", 1)
                 .transition()
                 .duration(self._transitionTime)
@@ -387,17 +508,6 @@ export default class GroupTree {
                     return `translate(${c.y},${c.x})`;
                 })
                 .remove();
-
-            nodeExit.select("text").style("fill-opacity", 1e-6);
-            nodeExit
-                .select(".grouptree__nodelabel")
-                .style("fill-opacity", 1e-6);
-            nodeExit
-                .select(".grouptree__pressurelabel")
-                .style("fill-opacity", 1e-6);
-            nodeExit
-                .select(".grouptree__pressureunit")
-                .style("fill-opacity", 1e-6);
         }
 
         /**
@@ -420,25 +530,35 @@ export default class GroupTree {
                     return diagonal(c, c);
                 });
 
+            linkEnter
+                .append("title")
+                .text((d) => getToolTipText(d.data.edge_data, date_index));
+
             const linkUpdate = linkEnter.merge(link);
 
             linkUpdate
-                .transition()
-                .duration(self._transitionTime)
                 .attr(
                     "class",
                     () => `link grouptree_link grouptree_link__${flowrate}`
                 )
+                .transition()
+                .duration(self._transitionTime)
                 .attr("d", (d) => diagonal(d, d.parent))
                 .style("stroke-width", (d) =>
                     self.getEdgeStrokeWidth(
                         flowrate,
-                        d.data[flowrate][date_index]
+                        d.data.edge_data[flowrate]?.[date_index] ?? 0
                     )
                 )
                 .style("stroke-dasharray", (d) => {
-                    return d.data[flowrate][date_index] > 0 ? "none" : "5,5";
+                    return (d.data.edge_data[flowrate]?.[date_index] ?? 0) > 0
+                        ? "none"
+                        : "5,5";
                 });
+
+            linkUpdate
+                .select("title")
+                .text((d) => getToolTipText(d.data.edge_data, date_index));
 
             link.exit()
                 .transition()
@@ -470,7 +590,7 @@ export default class GroupTree {
          */
         function updateEdgeTexts(edges) {
             const textpath = self._textpaths
-                .selectAll(".grupnet_text")
+                .selectAll(".edge_info_text")
                 .data(edges, (d) => d.id);
 
             const enter = textpath
@@ -479,7 +599,7 @@ export default class GroupTree {
                 .attr("dominant-baseline", "central")
                 .attr("text-anchor", "middle")
                 .append("textPath")
-                .attr("class", "grupnet_text")
+                .attr("class", "edge_info_text")
                 .attr("startOffset", "50%")
                 .attr("xlink:href", (d) => `#path ${d.id}`);
 
@@ -489,7 +609,7 @@ export default class GroupTree {
                 .transition()
                 .duration(self._transitionTime)
                 .attr("fill-opacity", 1)
-                .text((d) => d.data.grupnet);
+                .text((d) => d.data.edge_label);
 
             textpath.exit().remove();
         }
@@ -500,7 +620,7 @@ export default class GroupTree {
         );
 
         // execute visualization operations on enter, update and exit selections
-        updateNodes(newTree.descendants());
+        updateNodes(newTree.descendants(), this.nodeinfo);
         updateEdges(newTree.descendants().slice(1), this.flowrate);
         updateEdgeTexts(newTree.descendants().slice(1));
 

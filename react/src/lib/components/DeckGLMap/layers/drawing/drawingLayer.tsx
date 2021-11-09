@@ -1,6 +1,6 @@
 import { COORDINATE_SYSTEM, RGBAColor } from "@deck.gl/core";
 import { UpdateStateInfo } from "@deck.gl/core/lib/layer";
-import { CompositeLayerProps } from "@deck.gl/core/lib/composite-layer";
+import { ExtendedLayerProps } from "../utils/layerTools";
 import {
     DrawLineStringMode,
     DrawPointMode,
@@ -55,7 +55,10 @@ const UNSELECTED_LINE_COLOR: RGBAColor = [0x50, 0x50, 0x50, 0xcc];
 const SELECTED_LINE_COLOR: RGBAColor = [0x0, 0x0, 0x0, 0xff];
 
 const defaultProps = {
+    name: "Drawing",
+    id: "drawing-layer",
     pickable: true,
+    visible: true,
     mode: "drawLineString",
 
     // Props mainly used to make the information available to the Map parent comp.
@@ -66,9 +69,10 @@ const defaultProps = {
     },
 };
 
-export interface DrawingLayerProps<D> extends CompositeLayerProps<D> {
+export interface DrawingLayerProps<D> extends ExtendedLayerProps<D> {
     mode: string; // One of modes in MODE_MAP
     selectedFeatureIndexes: number[];
+    selectedDrawingFeature: Feature;
 }
 
 // Composite layer that contains an EditableGeoJsonLayer from nebula.gl
@@ -96,8 +100,8 @@ export default class DrawingLayer extends CompositeLayer<
             const featureIndex = this.state.data.features.indexOf(info.object);
             if (featureIndex >= 0) {
                 patchLayerProps<FeatureCollection>(this, {
-                    ...this.props,
-                    selectedFeatureIndexes: [info.index],
+                    selectedDrawingFeature:
+                        this.state.data.features[info.index],
                 } as DrawingLayerProps<FeatureCollection>);
                 return true;
             }
@@ -111,24 +115,30 @@ export default class DrawingLayer extends CompositeLayer<
     _onEdit(editAction: EditAction<FeatureCollection>): void {
         switch (editAction.editType) {
             case "addFeature":
-                patchLayerProps<FeatureCollection>(this, {
-                    ...this.props,
-                    data: editAction.updatedData,
+                this.setState({ data: editAction.updatedData });
+                this.setState({
                     selectedFeatureIndexes:
                         editAction.editContext.featureIndexes,
+                });
+                patchLayerProps<FeatureCollection>(this, {
+                    data: editAction.updatedData,
+                    selectedDrawingFeature:
+                        editAction.updatedData.features[
+                            editAction.editContext.featureIndexes[0]
+                        ],
                 } as DrawingLayerProps<FeatureCollection>);
                 break;
             case "removeFeature":
+                this.setState({ data: editAction.updatedData });
+                this.setState({ selectedFeatureIndexes: [] });
                 patchLayerProps<FeatureCollection>(this, {
-                    ...this.props,
                     data: editAction.updatedData,
-                    selectedFeatureIndexes: [],
                 } as DrawingLayerProps<FeatureCollection>);
                 break;
             case "removePosition":
             case "finishMovePosition":
+                this.setState({ data: editAction.updatedData });
                 patchLayerProps<FeatureCollection>(this, {
-                    ...this.props,
                     data: editAction.updatedData,
                 } as DrawingLayerProps<FeatureCollection>);
                 break;

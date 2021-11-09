@@ -1,7 +1,6 @@
 import { Icon } from "@equinor/eds-core-react";
 import { layers } from "@equinor/eds-icons";
 import { createStyles, makeStyles, Theme } from "@material-ui/core";
-import { isEmpty } from "lodash";
 import React from "react";
 import { useSelector } from "react-redux";
 import { MapState } from "../../redux/store";
@@ -19,22 +18,24 @@ const useStyles = makeStyles((theme: Theme) =>
             display: "flex",
             flexDirection: "column",
             alignItems: "center",
+            zIndex: 1,
         },
     })
 );
 const Settings: React.FC = React.memo(() => {
     const classes = useStyles();
 
-    const spec = useSelector((st: MapState) => st.spec);
+    const layers = useSelector((st: MapState) => st.layers);
 
-    if (isEmpty(spec) || !("layers" in spec)) return null;
+    if (!layers.length) return null;
     return (
         <div className={classes.root}>
             {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-            {(spec["layers"] as any[]).map((layer) => (
+            {(layers as any[]).map((layer) => (
                 <LayerSettingsButton
                     layerId={layer.id}
                     layerType={layer["@@type"]}
+                    name={layer.name}
                     key={`settings-button-${layer.id}`}
                 />
             ))}

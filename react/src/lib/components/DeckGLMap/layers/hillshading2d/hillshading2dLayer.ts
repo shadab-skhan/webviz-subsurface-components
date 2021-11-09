@@ -7,8 +7,9 @@ import {
     PropertyMapPickInfo,
     ValueDecoder,
 } from "../utils/propertyMapTools";
+import { getModelMatrix } from "../utils/layerTools";
 
-import fsHillshading from "./hillshading2d.fs.glsl";
+import fsHillshading from "!!raw-loader!./hillshading2d.fs.glsl";
 
 // Most props are inherited from DeckGL's BitmapLayer. For a full list, see
 // https://deck.gl/docs/api-reference/layers/bitmap-layer
@@ -26,12 +27,25 @@ export interface Hillshading2DProps<D> extends BitmapLayerProps<D> {
     // Intensity of light that is applied to the lightened potions of the map.
     diffuseLightIntensity: number;
 
+    // Use color map in this range
+    colorMapRange: [number, number];
+
     // By default, scale the [0, 256*256*256-1] decoded values to [0, 1]
     valueDecoder: ValueDecoder;
+
+    // Rotates image around bounds upper left corner counterclockwise in degrees.
+    rotDeg: number;
 }
 
 const defaultProps = {
+    name: "Hill shading",
+    id: "hillshading-layer",
+    opacity: 1.0,
+    pickable: true,
+    visible: true,
+    rotDeg: 0,
     valueRange: { type: "array" },
+    colorMapRange: { type: "array" },
     lightDirection: { type: "array", value: [1, 1, 1] },
     ambientLightIntensity: { type: "number", value: 0.5 },
     diffuseLightIntensity: { type: "number", value: 0.5 },
@@ -63,8 +77,20 @@ export default class Hillshading2DLayer extends BitmapLayer<
                     ...defaultProps.valueDecoder.value,
                     ...moduleParameters.valueDecoder,
                 },
+                modelMatrix: getModelMatrix(
+                    this.props.rotDeg,
+                    this.props.bounds[0] as number, // Rotate around upper left corner of bounds
+                    this.props.bounds[3] as number
+                ),
             };
             super.setModuleParameters(mergedModuleParams);
+
+            const valueRangeMin = this.props.valueRange[0] ?? 0.0;
+            const valueRangeMax = this.props.valueRange[1] ?? 1.0;
+            const colorMapRangeMin =
+                this.props.colorMapRange?.[0] ?? valueRangeMin;
+            const colorMapRangeMax =
+                this.props.colorMapRange?.[1] ?? valueRangeMax;
 
             const [minVal, maxVal] = this.props.valueRange;
             super.draw({
@@ -79,6 +105,10 @@ export default class Hillshading2DLayer extends BitmapLayer<
                     lightDirection: this.props.lightDirection,
                     ambientLightIntensity: this.props.ambientLightIntensity,
                     diffuseLightIntensity: this.props.diffuseLightIntensity,
+                    valueRangeMin,
+                    valueRangeMax,
+                    colorMapRangeMin,
+                    colorMapRangeMax,
                 },
                 moduleParameters: mergedModuleParams,
             });

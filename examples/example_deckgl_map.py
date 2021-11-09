@@ -9,15 +9,13 @@ import base64
 import copy
 import re
 
-import dash
-import dash_html_components as html
-import dash_core_components as dcc
+from dash import Dash, html, Input, Output, State, callback
 import jsonpatch
 import jsonpointer
 import numpy as np
 from PIL import Image
-
-import webviz_subsurface_components
+import webviz_core_components as wcc
+import webviz_subsurface_components as wsc
 
 # Helper class for dealing with map patches.
 class MapSpec:
@@ -160,76 +158,50 @@ if __name__ == "__main__":
         "master/react/src/demo/example-data/volve_logs.json"
     )
 
-    bounds = [432205, 6475078, 437720, 6481113]  # left, bottom, right, top
-    WIDTH = bounds[2] - bounds[0]  # right - left
-    HEIGHT = bounds[3] - bounds[1]  # top - bottom
-
-    map_obj = webviz_subsurface_components.DeckGLMap(
+    map_obj = wsc.DeckGLMap(
         id="deckgl-map",
         resources={
             "propertyMap": map_data,
         },
-        deckglSpecBase={
-            "initialViewState": {
-                "target": [bounds[0] + WIDTH / 2, bounds[1] + HEIGHT / 2, 0],
-                "zoom": -3,
+        coords={"visible": True, "multiPicking": True, "pickDepth": 10},
+        scale={"visible": True},
+        coordinateUnit="m",
+        bounds=[432205, 6475078, 437720, 6481113],  # left, bottom, right, top
+        layers=[
+            {
+                "@@type": "ColormapLayer",
+                "image": "@@#resources.propertyMap",
+                "colormap": COLOR_MAP,
+                "valueRange": [min_value, max_value],
             },
-            "layers": [
-                {
-                    "@@type": "ColormapLayer",
-                    "id": "colormap-layer",
-                    "bounds": bounds,
-                    "image": "@@#resources.propertyMap",
-                    "colormap": COLOR_MAP,
-                    "valueRange": [min_value, max_value],
-                    "pickable": True,
-                },
-                {
-                    "@@type": "Hillshading2DLayer",
-                    "id": "hillshading-layer",
-                    "bounds": bounds,
-                    "opacity": 1.0,
-                    "valueRange": [min_value, max_value],
-                    "image": "@@#resources.propertyMap",
-                    "pickable": True,
-                },
-                {
-                    "@@type": "DrawingLayer",
-                    "id": "drawing-layer",
-                    "data": {"type": "FeatureCollection", "features": []},
-                },
-                {
-                    "@@type": "WellsLayer",
-                    "id": "wells-layer",
-                    "data": WELLS,
-                    "logData": LOGS,
-                    "opacity": 1.0,
-                    "lineWidthScale": 5,
-                    "pointRadiusScale": 8,
-                    "outline": True,
-                    "logRadius": 6,
-                    "logrunName": "BLOCKING",
-                    "logName": "ZONELOG",
-                    "logCurves": True,
-                    "refine": True,
-                },
-            ],
-            "views": [
-                {
-                    "@@type": "OrthographicView",
-                    "id": "main",
-                    "controller": {"doubleClickZoom": False},
-                    "x": "0%",
-                    "y": "0%",
-                    "width": "100%",
-                    "height": "100%",
-                    "flipY": False,
-                }
-            ],
+            {
+                "@@type": "Hillshading2DLayer",
+                "valueRange": [min_value, max_value],
+                "image": "@@#resources.propertyMap",
+            },
+            {
+                "@@type": "DrawingLayer",
+                "data": "@@#editedData.data",
+                "selectedDrawingFeature": "@@#editedData.selectedDrawingFeature",
+            },
+            {
+                "@@type": "WellsLayer",
+                "data": WELLS,
+                "logData": LOGS,
+                "logrunName": "BLOCKING",
+                "logName": "ZONELOG",
+                "selectedWell": "@@#editedData.selectedWell",
+            },
+        ],
+        editedData={
+            "selectedWell": "",
+            "selectedDrawingFeature": [],
+            "data": {"type": "FeatureCollection", "features": []},
         },
     )
 
-    colormap_dropdown = dcc.Dropdown(
+    colormap_dropdown = wcc.Dropdown(
+        label="Colormap",
         id="colormap-select",
         options=[
             {
@@ -268,12 +240,14 @@ if __name__ == "__main__":
         clearable=False,
     )
 
-    app = dash.Dash(__name__)
+    app = Dash(__name__)
 
-    app.layout = html.Div(
+    app.layout = wcc.FlexBox(
         children=[
-            html.Div(
-                style={"float": "left", "width": "256px"},
+            wcc.Frame(
+                style={
+                    "flex": 1,
+                },
                 children=[
                     colormap_dropdown,
                     html.Img(
@@ -281,45 +255,34 @@ if __name__ == "__main__":
                     ),
                 ],
             ),
-            html.Div(
-                style={"float": "left", "width": "95%", "height": "90vh"},
+            wcc.Frame(
+                style={"flex": 10, "height": "90vh"},
                 children=[map_obj],
             ),
         ]
     )
 
-    @app.callback(
-        dash.dependencies.Output("colormap-img", "src"),
-        [dash.dependencies.Input("colormap-select", "value")],
+    @callback(
+        Output("colormap-img", "src"),
+        Input("colormap-select", "value"),
     )
     def update_img(value):
         return value
 
-    @app.callback(
-        dash.dependencies.Output("deckgl-map", "deckglSpecBase"),
-        dash.dependencies.Output("deckgl-map", "deckglSpecPatch"),
-        dash.dependencies.Input("colormap-select", "value"),
-        dash.dependencies.State("deckgl-map", "deckglSpecBase"),
-        dash.dependencies.State("deckgl-map", "deckglSpecPatch"),
+    @callback(
+        Output("deckgl-map", "layers"),
+        Input("colormap-select", "value"),
+        State("deckgl-map", "layers"),
     )
-    def sync_drawing(colormap, spec_base, spec_patch):
+    def _update_layers(colormap, deckgl_layers):
         if not colormap:
             return None
 
-        map_spec = MapSpec(spec_base, spec_patch)
+        def apply_colormap(layers):
+            # Update the colormap layer then return the updated layers.
+            layers[0]["colormap"] = colormap
+            return layers
 
-        def apply_colormap(spec):
-            # Update the colormap layer then return the full spec.
-            # The MapSpec class will create a patch from it.
-            spec["layers"][0]["colormap"] = colormap
-            return spec
-
-        # Send the updated base spec (the input base+patch) and the colormap patch.
-        # This can be done in a number of ways:
-        # - Apply input patch and local modifications to the input base and send just deckglSpecBase
-        # - Apply input patch to the input base and send it as deckglSpecBase.
-        #   Send local modifications as deckglSpecBase. (Current solution)
-        # - Send just the input patch and local modifications as deckglSpecBase
-        return map_spec.get_spec(), map_spec.create_patch(apply_colormap)
+        return apply_colormap(deckgl_layers)
 
     app.run_server(debug=True)
