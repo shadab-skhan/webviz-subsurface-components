@@ -159,6 +159,8 @@ if __name__ == "__main__":
         "master/react/src/demo/example-data/volve_logs.json"
     )
 
+    bounds = [432205, 6475078, 437720, 6481113]  # left, bottom, right, top
+
     map_obj = wsc.DeckGLMap(
         id="deckgl-map",
         resources={
@@ -167,16 +169,18 @@ if __name__ == "__main__":
         coords={"visible": True, "multiPicking": True, "pickDepth": 10},
         scale={"visible": True},
         coordinateUnit="m",
-        bounds=[432205, 6475078, 437720, 6481113],  # left, bottom, right, top
+        bounds=bounds,
         layers=[
             {
                 "@@type": "ColormapLayer",
                 "image": "@@#resources.propertyMap",
+                "bounds": bounds,
                 "colormap": COLOR_MAP,
                 "valueRange": [min_value, max_value],
             },
             {
                 "@@type": "Hillshading2DLayer",
+                "bounds": bounds,
                 "valueRange": [min_value, max_value],
                 "image": "@@#resources.propertyMap",
             },
