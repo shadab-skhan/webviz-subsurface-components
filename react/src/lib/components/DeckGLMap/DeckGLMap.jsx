@@ -1,6 +1,8 @@
 import PropTypes from "prop-types";
 import * as React from "react";
 import Map from "./components/Map";
+import template from "../../../demo/example-data/welllayer_template.json";
+import colorTables from "../../../demo/example-data/color-tables.json";
 
 DeckGLMap.defaultProps = {
     coords: {
@@ -16,9 +18,13 @@ DeckGLMap.defaultProps = {
     },
     legend: {
         visible: true,
-        position: [46, 10],
+        position: [5, 10],
+        horizontal: true,
     },
     zoom: -3,
+    view3D: false,
+    colorTables: colorTables,
+    template: template,
 };
 
 function DeckGLMap({
@@ -27,25 +33,26 @@ function DeckGLMap({
     layers,
     bounds,
     zoom,
+    view3D,
     coords,
     scale,
     legend,
+    template,
+    colorTables,
     coordinateUnit,
     editedData,
     setProps,
 }) {
     // Contains layers data received from map layers by user interaction
-    let [layerEditedData, setLayerEditedData] = React.useState(null);
+    let [layerEditedData, setLayerEditedData] = React.useState(editedData);
 
     React.useEffect(() => {
-        if (!layerEditedData) {
-            setLayerEditedData(editedData);
-        } else {
-            setLayerEditedData({
-                ...layerEditedData,
-                ...editedData,
-            });
-        }
+        if (!editedData) return;
+
+        setLayerEditedData({
+            ...layerEditedData,
+            ...editedData,
+        });
     }, [editedData]);
 
     // This callback is used as a mechanism to update the component from the layers or toolbar.
@@ -64,21 +71,22 @@ function DeckGLMap({
     );
 
     return (
-        layerEditedData && (
-            <Map
-                id={id}
-                resources={resources}
-                layers={layers}
-                bounds={bounds}
-                zoom={zoom}
-                coords={coords}
-                scale={scale}
-                legend={legend}
-                coordinateUnit={coordinateUnit}
-                editedData={layerEditedData}
-                setEditedData={setEditedData}
-            />
-        )
+        <Map
+            id={id}
+            resources={resources}
+            layers={layers}
+            bounds={bounds}
+            zoom={zoom}
+            view3D={view3D}
+            coords={coords}
+            scale={scale}
+            legend={legend}
+            template={template}
+            colorTables={colorTables}
+            coordinateUnit={coordinateUnit}
+            editedData={layerEditedData}
+            setEditedData={setEditedData}
+        />
     );
 }
 
@@ -109,9 +117,17 @@ DeckGLMap.propTypes = {
      */
     zoom: PropTypes.number,
 
-    /* List of JSON object containing layer specific data.
+    /**
+     * If true, displays map in 3D view, default is 2D view
+     */
+    view3D: PropTypes.bool,
+
+    /** List of JSON object containing layer specific data.
      * Each JSON object will consist of layer type with key as "@@type" and
      * layer specific data, if any.
+     * Supports both upstream Deck.gl layers and custom WebViz layers.
+     * See Storybook examples for example layer stacks.
+     * See also: https://deck.gl/docs/api-reference/core/deck#layers
      */
     layers: PropTypes.arrayOf(PropTypes.object),
 
@@ -180,12 +196,24 @@ DeckGLMap.propTypes = {
          * Legend position in pixels.
          */
         position: PropTypes.arrayOf(PropTypes.number),
+        /**
+         * Legend layout.
+         */
+        horizontal: PropTypes.bool,
     }),
 
     /**
      * Prop containing edited data from layers
      */
     editedData: PropTypes.object,
+    /**
+     * Prop containing color table data
+     */
+    colorTables: PropTypes.arrayOf(PropTypes.object),
+    /**
+     * Prop containing color template data
+     */
+    template: PropTypes.arrayOf(PropTypes.object),
 };
 
 export default DeckGLMap;

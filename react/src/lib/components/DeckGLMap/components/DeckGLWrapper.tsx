@@ -2,21 +2,23 @@ import { JSONConfiguration, JSONConverter } from "@deck.gl/json";
 import DeckGL from "@deck.gl/react";
 import { PickInfo } from "deck.gl";
 import { Feature } from "geojson";
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useMemo, useState, useCallback } from "react";
 import Settings from "./settings/Settings";
 import JSON_CONVERTER_CONFIG from "../utils/configuration";
 import { MapState } from "../redux/store";
 import { useDispatch, useSelector } from "react-redux";
 import { updateLayerProp } from "../redux/actions";
-import { WellsPickInfo, getLogInfo } from "../layers/wells/wellsLayer";
+import { WellsPickInfo } from "../layers/wells/wellsLayer";
 import InfoCard from "./InfoCard";
 import DistanceScale from "../components/DistanceScale";
 import DiscreteColorLegend from "../components/DiscreteLegend";
 import ContinuousLegend from "../components/ContinuousLegend";
 import StatusIndicator from "./StatusIndicator";
 import { DrawingLayer, WellsLayer, PieChartLayer } from "../layers";
-import { getLogValues, LogCurveDataType } from "../layers/wells/wellsLayer";
-import { Layer } from "deck.gl";
+import { Layer, View } from "deck.gl";
+import { templateArray } from "./WelllayerTemplateTypes";
+import { colorTablesArray } from "./ColorTableTypes";
+import { LayerProps } from "@deck.gl/core/lib/layer";
 
 export interface DeckGLWrapperProps {
     /**
@@ -26,10 +28,6 @@ export interface DeckGLWrapperProps {
      */
     id: string;
 
-    initialViewState?: Record<string, unknown>;
-
-    views: Record<string, unknown>[];
-
     /**
      * Resource dictionary made available in the DeckGL specification as an enum.
      * The values can be accessed like this: `"@@#resources.resourceId"`, where
@@ -38,6 +36,21 @@ export interface DeckGLWrapperProps {
      * https://deck.gl/docs/api-reference/json/conversion-reference#enumerations-and-using-the--prefix
      */
     resources: Record<string, unknown>;
+
+    /**
+     * Coordinate boundary for the view defined as [left, bottom, right, top].
+     */
+    bounds: [number, number, number, number];
+
+    /**
+     * Zoom level for the view.
+     */
+    zoom: number;
+
+    /**
+     * If true, displays map in 3D view, default is 2D view
+     */
+    view3D: boolean;
 
     /**
      * Parameters for the InfoCard component
@@ -63,6 +76,7 @@ export interface DeckGLWrapperProps {
     legend: {
         visible: boolean;
         position: number[];
+        horizontal: boolean;
     };
 
     /**
@@ -76,6 +90,10 @@ export interface DeckGLWrapperProps {
     setEditedData: (data: Record<string, unknown>) => void;
 
     children?: React.ReactNode;
+
+    template: templateArray;
+
+    colorTables: colorTablesArray;
 }
 
 function getLayer(layers: Layer<unknown>[] | undefined, id: string) {
@@ -88,59 +106,63 @@ function getLayer(layers: Layer<unknown>[] | undefined, id: string) {
 
 const DeckGLWrapper: React.FC<DeckGLWrapperProps> = ({
     id,
-    initialViewState,
-    views,
     resources,
+    bounds,
+    zoom,
+    view3D,
     coords,
     scale,
     coordinateUnit,
     legend,
     editedData,
     setEditedData,
+    template,
+    colorTables,
     children,
 }: DeckGLWrapperProps) => {
-    // state for views prop of DeckGL component
-    const [deckGLViews, setDeckGLViews] = useState();
+    // state for initial views prop (target and zoom) of DeckGL component
+    const [initialViewState, setInitialViewState] =
+        useState<Record<string, unknown>>();
     useEffect(() => {
-        const configuration = new JSONConfiguration(JSON_CONVERTER_CONFIG);
-        const jsonConverter = new JSONConverter({ configuration });
-        setDeckGLViews(jsonConverter.convert(views));
-    }, [views]);
+        setInitialViewState(getInitialViewState(bounds, zoom));
+    }, [bounds, zoom]);
 
-    const dispatch = useDispatch();
+    // state for views prop of DeckGL component
+    const [deckGLViews, setDeckGLViews] = useState<View[]>([]);
+    useEffect(() => {
+        setDeckGLViews(getViewsForDeckGL(view3D));
+    }, [view3D]);
+
+    // get layers data from store
     const layersData = useSelector((st: MapState) => st.layers);
+    const [deckGLLayers, setDeckGLLayers] = useState<Layer<unknown>[]>([]);
 
-    const [deckGLLayers, setDeckGLLayers] = useState<Layer<unknown>[]>();
     useEffect(() => {
         if (!layersData.length) {
             return;
         }
 
-        // Add the resources as an enum in the Json Configuration and then convert the spec to actual objects.
-        // See https://deck.gl/docs/api-reference/json/overview for more details.
-        const configuration = new JSONConfiguration(JSON_CONVERTER_CONFIG);
-        if (resources && editedData) {
-            configuration.merge({
-                enumerations: {
-                    resources,
-                    editedData,
-                },
-            });
-        }
-        const jsonConverter = new JSONConverter({ configuration });
-        setDeckGLLayers(jsonConverter.convert(layersData));
+        const enumerations = [
+            { resources: resources },
+            { editedData: editedData },
+        ];
+        setDeckGLLayers(
+            jsonToObject(layersData, enumerations) as Layer<unknown>[]
+        );
     }, [layersData, resources, editedData]);
 
     // Hacky way of disabling well selection when drawing.
-    const drawingLayer = getLayer(
-        deckGLLayers,
-        "drawing-layer"
-    ) as DrawingLayer;
-    const drawingEnabled = drawingLayer && drawingLayer.props.mode != "view";
-    React.useEffect(() => {
+    const drawingLayer = useMemo(
+        () => getLayer(deckGLLayers, "drawing-layer") as DrawingLayer,
+        [deckGLLayers]
+    );
+
+    const dispatch = useDispatch();
+    useEffect(() => {
         if (!drawingLayer) return;
 
         const wellsLayer = getLayer(deckGLLayers, "wells-layer") as WellsLayer;
+        const drawingEnabled = drawingLayer.props.mode != "view";
         if (wellsLayer) {
             dispatch(
                 updateLayerProp([
@@ -161,9 +183,9 @@ const DeckGLWrapper: React.FC<DeckGLWrapperProps> = ({
                 ])
             );
         }
-    }, [drawingEnabled, dispatch]);
+    }, [drawingLayer?.props.mode, dispatch]);
 
-    const refCb = React.useCallback(
+    const refCb = useCallback(
         (deckRef) => {
             if (deckRef && deckRef.deck) {
                 // Needed to initialize the viewState on first load
@@ -204,71 +226,59 @@ const DeckGLWrapper: React.FC<DeckGLWrapperProps> = ({
         [coords]
     );
 
-    const [isLoaded, setIsLoaded] = React.useState<boolean>(false);
+    const [isLoaded, setIsLoaded] = useState<boolean>(false);
 
-    const [legendProps, setLegendProps] = React.useState<{
+    const [legendProps, setLegendProps] = useState<{
         title: string;
+        name: string;
         discrete: boolean;
         metadata: { objects: Record<string, [number[], number]> };
         valueRange: number[];
     }>({
         title: "",
+        name: "string",
         discrete: false,
         metadata: { objects: {} },
         valueRange: [],
     });
 
-    const onAfterRender = React.useCallback(() => {
+    const onAfterRender = useCallback(() => {
         if (deckGLLayers) {
             const state = deckGLLayers.every((layer) => layer.isLoaded);
             setIsLoaded(state);
         }
     }, [deckGLLayers]);
 
-    const wellsLayer = getLayer(deckGLLayers, "wells-layer") as WellsLayer;
-
-    // Get color table for log curves.
-    React.useEffect(() => {
-        if (!wellsLayer?.isLoaded) return;
-        const logName = wellsLayer.props.logName;
-        const pathLayer = wellsLayer.internalState.subLayers[1];
-        if (!pathLayer.isLoaded) return;
-        const logs = pathLayer?.props.data;
-        const logData = logs[0];
-        const logInfo = getLogInfo(logData, logData.header.name, logName);
-        const title = "Wells / " + logName;
-        if (logInfo?.description == "discrete") {
-            const meta = logData["metadata_discrete"];
-            const metadataDiscrete = meta[logName].objects;
-            setLegendProps({
-                title: title,
-                discrete: true,
-                metadata: metadataDiscrete,
-                valueRange: [],
-            });
-        } else {
-            const minArray: number[] = [];
-            const maxArray: number[] = [];
-            logs.forEach(function (log: LogCurveDataType) {
-                const logValues = getLogValues(log, log.header.name, logName);
-
-                minArray.push(Math.min(...logValues));
-                maxArray.push(Math.max(...logValues));
-            });
-
-            setLegendProps({
-                title: title,
-                discrete: false,
-                metadata: { objects: {} },
-                valueRange: [Math.min(...minArray), Math.max(...maxArray)],
+    const wellsLayer = useMemo(
+        () => getLayer(deckGLLayers, "wells-layer") as WellsLayer,
+        [deckGLLayers]
+    );
+    const onLoad = useCallback(() => {
+        if (wellsLayer) {
+            wellsLayer.setState({
+                template: template,
+                colorTables: colorTables,
             });
         }
+    }, [wellsLayer, template, colorTables]);
+    // Get color table for log curves.
+    useEffect(() => {
+        if (!wellsLayer?.isLoaded || !wellsLayer.props.logData) return;
+        const legend = wellsLayer.state.legend[0];
+        setLegendProps({
+            title: legend.title,
+            name: legend.name,
+            discrete: legend.discrete,
+            metadata: legend.metadata,
+            valueRange: legend.valueRange,
+        });
     }, [isLoaded, legend, wellsLayer?.props?.logName]);
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const [viewState, setViewState] = useState<any>();
 
     if (!deckGLViews) return null;
+
     return (
         <div>
             <DeckGL
@@ -294,6 +304,7 @@ const DeckGLWrapper: React.FC<DeckGLWrapperProps> = ({
                 onHover={onHover}
                 onViewStateChange={({ viewState }) => setViewState(viewState)}
                 onAfterRender={onAfterRender}
+                onLoad={onLoad}
             >
                 {children}
             </DeckGL>
@@ -313,6 +324,10 @@ const DeckGLWrapper: React.FC<DeckGLWrapperProps> = ({
                     discreteData={legendProps.metadata}
                     dataObjectName={legendProps.title}
                     position={legend.position}
+                    name={legendProps.name}
+                    template={template}
+                    colorTables={colorTables}
+                    horizontal={legend.horizontal}
                 />
             )}
             {legendProps.valueRange?.length > 0 &&
@@ -323,6 +338,10 @@ const DeckGLWrapper: React.FC<DeckGLWrapperProps> = ({
                         max={legendProps.valueRange[1]}
                         dataObjectName={legendProps.title}
                         position={legend.position}
+                        name={legendProps.name}
+                        template={template}
+                        colorTables={colorTables}
+                        horizontal={legend.horizontal}
                     />
                 )}
             {deckGLLayers && (
@@ -333,3 +352,67 @@ const DeckGLWrapper: React.FC<DeckGLWrapperProps> = ({
 };
 
 export default DeckGLWrapper;
+
+// ------------- Helper functions ---------- //
+// Add the resources as an enum in the Json Configuration and then convert the spec to actual objects.
+// See https://deck.gl/docs/api-reference/json/overview for more details.
+function jsonToObject(
+    data: Record<string, unknown>[] | LayerProps<unknown>[],
+    enums: Record<string, unknown>[] | undefined = undefined
+): Layer<unknown>[] | View[] {
+    const configuration = new JSONConfiguration(JSON_CONVERTER_CONFIG);
+    enums?.forEach((enumeration) => {
+        if (enumeration) {
+            configuration.merge({
+                enumerations: {
+                    ...enumeration,
+                },
+            });
+        }
+    });
+    const jsonConverter = new JSONConverter({ configuration });
+    return jsonConverter.convert(data);
+}
+
+// Returns DeckGL specific views object
+function getViewsForDeckGL(view3D: boolean): View[] {
+    return jsonToObject(getViews(view3D)) as View[];
+}
+
+// returns initial view state for DeckGL
+function getInitialViewState(
+    bounds: [number, number, number, number],
+    zoom: number
+): Record<string, unknown> {
+    const width = bounds[2] - bounds[0]; // right - left
+    const height = bounds[3] - bounds[1]; // top - bottom
+
+    const initial_view_state = {
+        // target to center of the bound
+        target: [bounds[0] + width / 2, bounds[1] + height / 2, 0],
+        zoom: zoom,
+    };
+
+    return initial_view_state;
+}
+
+// construct views object for DeckGL component
+function getViews(view3D: boolean): Record<string, unknown>[] {
+    const view_type = view3D ? "OrbitView" : "OrthographicView";
+    const id = view3D ? "main3D" : "main2D";
+    const deckgl_views = [
+        {
+            "@@type": view_type,
+            id: id,
+            controller: {
+                doubleClickZoom: false,
+            },
+            x: "0%",
+            y: "0%",
+            width: "100%",
+            height: "100%",
+            flipY: false,
+        },
+    ];
+    return deckgl_views;
+}

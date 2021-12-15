@@ -54,14 +54,14 @@ const colorItems: Record<string, string> = {
 
 const noneValue = "-";
 
-function _createItems(
-    items: Record<string, string>,
-    insertEmpty?: boolean
-): ReactNode[] {
+function _createItems(items: Record<string, string>): ReactNode[] {
     const nodes: ReactNode[] = [];
-    if (insertEmpty) nodes.push(<option value={noneValue}>{"\u2014"}</option>);
     for (const key in items) {
-        nodes.push(<option value={key}>{items[key]}</option>);
+        nodes.push(
+            <option key={key} value={key}>
+                {items[key]}
+            </option>
+        );
     }
     return nodes;
 }
@@ -72,38 +72,39 @@ function createTypeItems(): ReactNode[] {
 function createScaleItems(): ReactNode[] {
     return _createItems(scaleItems);
 }
-function createColorItems(insertEmpty?: boolean): ReactNode[] {
-    return _createItems(colorItems, insertEmpty);
+function createColorItems(): ReactNode[] {
+    return _createItems(colorItems);
 }
 
-function createColorTableItems(
-    colorTables: ColorTable[],
-    insertEmpty?: boolean
-): ReactNode[] {
+function createColorTableItems(colorTables: ColorTable[]): ReactNode[] {
     const nodes: ReactNode[] = [];
-    if (insertEmpty) nodes.push(<option value={noneValue}>{"\u2014"}</option>);
     for (const colorTable of colorTables) {
+        if (colorTable.discrete)
+            // skip discrete color tables
+            continue;
         nodes.push(<option key={colorTable.name}>{colorTable.name}</option>);
     }
     return nodes;
 }
 
-interface PlotPropertiesDialogProps {
+interface Props {
     templatePlot?: TemplatePlot; // input for editting
     onOK: (templatePlot: TemplatePlot) => void;
     wellLogView: WellLogView;
     track: Track;
 }
-interface PlotPropertiesDialogState extends TemplatePlot {
+interface State extends TemplatePlot {
     open: boolean;
 }
 
-export class PlotPropertiesDialog extends Component<
-    PlotPropertiesDialogProps,
-    PlotPropertiesDialogState
-> {
-    constructor(props: PlotPropertiesDialogProps) {
+export class PlotPropertiesDialog extends Component<Props, State> {
+    constructor(props: Props) {
         super(props);
+        let name = "",
+            name2 = "";
+        const names = this.dataNames(true);
+        if (names[0]) name2 = name = names[0];
+        if (names[1]) name2 = names[1];
 
         this.state = this.props.templatePlot
             ? {
@@ -112,23 +113,49 @@ export class PlotPropertiesDialog extends Component<
                   open: true,
               }
             : {
-                  // we shold fill every posible state to allow this.setState() to set it
+                  // we should fill every posible state to allow this.setState() to set it
                   type: "line",
-                  name: "DEPT", //?? the first data in data selector ?? welllog[0].curves[0].name?
-                  name2: "DVER", //? the second data in data selector ??
+                  name: name, //?? the first data in data selector
+                  name2: name2, //? the second data in data selector ??
 
                   color: "black", //??
+
+                  // for 'area' plot
                   fill: "red",
                   fillOpacity: 0.25,
-                  colorTable: this.props.wellLogView.props.colorTables[0].name,
+                  inverseColor: "",
 
+                  // for 'gradient fill' plot
+                  colorTable: this.props.wellLogView.props.colorTables[0].name,
+                  inverseColorTable: "",
+
+                  // for 'differetial' plot
                   color2: "black", //??
                   fill2: "green",
 
                   open: true,
               };
+
         this.closeDialog = this.closeDialog.bind(this);
         this.onOK = this.onOK.bind(this);
+    }
+
+    componentDidUpdate(_prevProps: Props, prevState: State): void {
+        if (this.state.type !== prevState.type) {
+            if (this.state.type === "area") {
+                if (!this.state.fill) this.setState({ fill: "black" });
+            } else if (this.state.type === "gradientfill") {
+                if (this.state.inverseColor)
+                    this.setState({ inverseColor: "" });
+            } else if (this.state.type === "differential") {
+                if (!this.state.name2) {
+                    const skipUsed = this.props.templatePlot
+                        ? false
+                        : true; /*??*/
+                    this.setState({ name2: this.dataNames(skipUsed)[0] });
+                }
+            }
+        }
     }
 
     onOK(): void {
@@ -140,12 +167,8 @@ export class PlotPropertiesDialog extends Component<
         this.setState({ open: false });
     }
 
-    createDataItem(item: string): ReactNode {
-        return <option key={item}>{item}</option>;
-    }
-
-    createDataItems(): ReactNode[] {
-        const nodes: ReactNode[] = [];
+    dataNames(skipUsed: boolean): string[] {
+        const names: string[] = [];
         const welllog = this.props.wellLogView.props.welllog;
         if (welllog && welllog[0]) {
             const track = this.props.track;
@@ -167,74 +190,107 @@ export class PlotPropertiesDialog extends Component<
                     // Scale tracks?
                     bUsed = true;
                 }
-                if (!bUsed) nodes.push(this.createDataItem(curve.name));
+                if (!bUsed || !skipUsed) names.push(curve.name);
                 iCurve++;
             }
         }
-        return nodes;
+        return names;
+    }
+
+    createDataItem(item: string): ReactNode {
+        return (
+            <option key={item} value={item}>
+                {item}
+            </option>
+        );
+    }
+
+    createDataItems(skipUsed: boolean): ReactNode[] {
+        const names = this.dataNames(skipUsed);
+        return names.map((name) => this.createDataItem(name));
     }
 
     createSelectControl(
         valueName: string, // use it as "a pointer to member" of an object
         label: string,
-        createItems: () => ReactNode[]
+        nodes: ReactNode[],
+        insertEmpty?: boolean
     ): ReactNode {
-        const value = (this.state as unknown as Record<string, string>)[
+        let value = (this.state as unknown as Record<string, string>)[
             valueName
         ];
+        if (insertEmpty) {
+            if (!value) value = noneValue;
+            // insert at the beginning (reverse order? add to the edn, reverse back)
+            nodes.reverse();
+            nodes.push(
+                <option key={noneValue} value={noneValue}>
+                    {"\u2014"}
+                </option>
+            );
+            nodes.reverse();
+        }
         return (
             <FormControl fullWidth>
                 <InputLabel>{label}</InputLabel>
                 <NativeSelect
                     value={value}
                     onChange={(event) => {
-                        const values = new Object() as Record<string, string>;
-                        values[valueName] =
+                        const value =
                             event.currentTarget.value === noneValue
                                 ? ""
                                 : event.currentTarget.value;
-                        this.setState(
-                            values as unknown as PlotPropertiesDialogState
-                        );
+
+                        const values = new Object() as Record<string, string>;
+                        values[valueName] = value;
+                        this.setState(values as unknown as State);
                     }}
                 >
-                    {createItems()}
+                    {nodes}
                 </NativeSelect>
             </FormControl>
         );
     }
 
-    //{ this.props.wellLogView.logController.tracks }
     render(): ReactNode {
+        const title = this.props.templatePlot ? "Edit plot" : "Add New Plot";
+        const skipUsed = this.props.templatePlot ? false : true; /*??*/
         const colorTables = this.props.wellLogView.props.colorTables;
         return (
-            <Dialog open={this.state.open} maxWidth="sm" fullWidth>
-                <DialogTitle>
-                    {this.props.templatePlot ? "Edit plot" : "Add New Plot"}
-                </DialogTitle>
+            <Dialog
+                open={this.state.open}
+                maxWidth="sm"
+                fullWidth
+                onClose={() => this.setState({ open: false })}
+            >
+                <DialogTitle>{title}</DialogTitle>
                 <DialogContent
                     style={{
                         display: "grid",
-                        gridTemplateColumns: "1fr 1fr  1fr",
+                        gridTemplateColumns: "1fr 1fr 1fr",
                     }}
                 >
-                    {this.createSelectControl("type", "Type", createTypeItems)}
+                    {this.createSelectControl(
+                        "type",
+                        "Type",
+                        createTypeItems()
+                    )}
                     {this.createSelectControl(
                         "scale",
                         "Scale",
-                        createScaleItems
+                        createScaleItems()
                     )}
                     <FormControl fullWidth key="12" />
 
                     {this.createSelectControl(
                         "name",
                         "Data",
-                        this.createDataItems.bind(this)
+                        this.createDataItems(skipUsed)
                     )}
                     {this.createSelectControl(
                         "color",
                         this.state.type === "dot" ? "Dot Color" : "Line Color",
-                        createColorItems
+                        createColorItems()
                     )}
 
                     {this.state.type === "area" ||
@@ -243,7 +299,7 @@ export class PlotPropertiesDialog extends Component<
                               this.createSelectControl(
                                   "fill",
                                   "Fill Color",
-                                  createColorItems.bind(null, false)
+                                  createColorItems()
                               ),
                               <FormControl fullWidth key="112" />,
                               <FormControl fullWidth key="113" />,
@@ -251,7 +307,8 @@ export class PlotPropertiesDialog extends Component<
                                   this.createSelectControl(
                                       "inverseColor",
                                       "Inverse Color",
-                                      createColorItems.bind(null, true)
+                                      createColorItems(),
+                                      true
                                   )
                               ) : (
                                   <FormControl fullWidth />
@@ -262,22 +319,15 @@ export class PlotPropertiesDialog extends Component<
                               this.createSelectControl(
                                   "colorTable",
                                   "Fill Color table",
-                                  createColorTableItems.bind(
-                                      this,
-                                      colorTables,
-                                      false
-                                  )
+                                  createColorTableItems(colorTables)
                               ),
                               <FormControl fullWidth key="211" />,
                               <FormControl fullWidth key="212" />,
                               this.createSelectControl(
                                   "inverseColorTable",
                                   "Inverse Color table",
-                                  createColorTableItems.bind(
-                                      this,
-                                      colorTables,
-                                      true
-                                  )
+                                  createColorTableItems(colorTables),
+                                  true
                               ),
                           ]
                         : []}
@@ -287,17 +337,17 @@ export class PlotPropertiesDialog extends Component<
                               this.createSelectControl(
                                   "name2",
                                   "Data 2",
-                                  this.createDataItems.bind(this)
+                                  this.createDataItems(skipUsed)
                               ),
                               this.createSelectControl(
                                   "color2",
                                   "Line Color 2",
-                                  createColorItems
+                                  createColorItems()
                               ),
                               this.createSelectControl(
                                   "fill2",
                                   "Fill Color 2",
-                                  createColorItems
+                                  createColorItems()
                               ),
                           ]
                         : []}

@@ -1,19 +1,12 @@
 import * as jsonpatch from "fast-json-patch";
 import DeckGLWrapper from "./DeckGLWrapper";
-import { AnyAction, EnhancedStore } from "@reduxjs/toolkit";
 import React from "react";
 import { Provider as ReduxProvider } from "react-redux";
 import { createStore } from "../redux/store";
 import { setLayers } from "../redux/actions";
-import {
-    ColormapLayer,
-    Hillshading2DLayer,
-    WellsLayer,
-    FaultPolygonsLayer,
-    PieChartLayer,
-    GridLayer,
-    DrawingLayer,
-} from "../layers";
+import { getLayersWithDefaultProps } from "../layers/utils/layerTools";
+import { templateArray } from "./WelllayerTemplateTypes";
+import { colorTablesArray } from "./ColorTableTypes";
 
 export interface MapProps {
     /**
@@ -49,6 +42,11 @@ export interface MapProps {
     zoom: number;
 
     /**
+     * If true, displays map in 3D view, default is 2D view (false)
+     */
+    view3D: boolean;
+
+    /**
      * Parameters for the InfoCard component
      */
     coords: {
@@ -72,6 +70,7 @@ export interface MapProps {
     legend: {
         visible: boolean;
         position: number[];
+        horizontal: boolean;
     };
 
     /**
@@ -85,6 +84,10 @@ export interface MapProps {
     setEditedData: (data: Record<string, unknown>) => void;
 
     children?: React.ReactNode;
+
+    template: templateArray;
+
+    colorTables: colorTablesArray;
 }
 
 const Map: React.FC<MapProps> = ({
@@ -93,40 +96,25 @@ const Map: React.FC<MapProps> = ({
     layers,
     bounds,
     zoom,
+    view3D,
     coords,
     scale,
     coordinateUnit,
     legend,
+    template,
+    colorTables,
     editedData,
     setEditedData,
 }: MapProps) => {
-    // state for initial views prop (target and zoom) of DeckGL component
-    const [initialViewState, setInitialViewState] =
-        React.useState<Record<string, unknown>>();
-    React.useEffect(() => {
-        setInitialViewState(getInitialViewState(bounds, zoom));
-    }, [bounds, zoom]);
-
-    // state for views prop of DeckGL component
-    // Now we are using single view, will extend to support multiple synced views
-    const deckGLViews = getViewsForDeckGL();
-
-    // state to update layers to include default props
-    const [layersWithDefaultProps, setLayersWithDefaultProps] = React.useState(
-        getLayersWithDefaultProps(layers)
-    );
-    React.useEffect(() => {
-        setLayersWithDefaultProps(getLayersWithDefaultProps(layers));
-    }, [layers]);
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const store = React.useRef<EnhancedStore<any, AnyAction, any>>(
-        createStore(layersWithDefaultProps)
+    // create store once with layers data
+    const store = React.useMemo(
+        () => createStore(getLayersWithDefaultProps(layers)),
+        []
     );
 
-    // update the store if layer prop is changed
+    // update store if any of the layer prop is changed
     React.useEffect(() => {
-        const prev_state = store.current.getState()["layers"];
+        const prev_state = store.getState()["layers"];
         const cur_state = layers;
         const patch = jsonpatch.compare(prev_state, cur_state);
         const replace_operations = patch.filter((obj) => obj.op === "replace");
@@ -137,104 +125,29 @@ const Map: React.FC<MapProps> = ({
                 false,
                 false
             ).newDocument;
-            store.current.dispatch(setLayers(new_state));
+            store.dispatch(setLayers(new_state));
         }
     }, [layers]);
 
     return (
-        deckGLViews && (
-            <ReduxProvider store={store.current}>
-                <DeckGLWrapper
-                    id={id}
-                    initialViewState={initialViewState}
-                    views={deckGLViews}
-                    resources={resources}
-                    coords={coords}
-                    scale={scale}
-                    coordinateUnit={coordinateUnit}
-                    legend={legend}
-                    editedData={editedData}
-                    setEditedData={setEditedData}
-                />
-            </ReduxProvider>
-        )
+        <ReduxProvider store={store}>
+            <DeckGLWrapper
+                id={id}
+                resources={resources}
+                bounds={bounds}
+                zoom={zoom}
+                view3D={view3D}
+                coords={coords}
+                scale={scale}
+                coordinateUnit={coordinateUnit}
+                legend={legend}
+                editedData={editedData}
+                setEditedData={setEditedData}
+                template={template}
+                colorTables={colorTables}
+            />
+        </ReduxProvider>
     );
 };
 
 export default Map;
-
-// ------------- Helper functions ---------- //
-// returns initial view state for DeckGL
-function getInitialViewState(
-    bounds: [number, number, number, number],
-    zoom: number
-): Record<string, unknown> {
-    const width = bounds[2] - bounds[0]; // right - left
-    const height = bounds[3] - bounds[1]; // top - bottom
-
-    const initial_view_state = {
-        // target to center of the bound
-        target: [bounds[0] + width / 2, bounds[1] + height / 2, 0],
-        zoom: zoom,
-    };
-
-    return initial_view_state;
-}
-
-// construct views object for DeckGL component
-function getViewsForDeckGL(): Record<string, unknown>[] {
-    const deckgl_views = [
-        {
-            "@@type": "OrthographicView",
-            id: "main",
-            controller: {
-                doubleClickZoom: false,
-            },
-            x: "0%",
-            y: "0%",
-            width: "100%",
-            height: "100%",
-            flipY: false,
-        },
-    ];
-    return deckgl_views;
-}
-
-// update layer object to include default props
-function getLayersWithDefaultProps(
-    deckgl_layers: Record<string, unknown>[]
-): Record<string, unknown>[] {
-    const layers = deckgl_layers.map((a) => {
-        return { ...a };
-    });
-
-    layers?.forEach((layer) => {
-        let default_props = undefined;
-        if (layer["@@type"] === ColormapLayer.name) {
-            default_props = ColormapLayer.defaultProps;
-        } else if (layer["@@type"] === Hillshading2DLayer.name) {
-            default_props = Hillshading2DLayer.defaultProps;
-        } else if (layer["@@type"] === GridLayer.name)
-            default_props = GridLayer.defaultProps;
-        else if (layer["@@type"] === WellsLayer.name)
-            default_props = WellsLayer.defaultProps;
-        else if (layer["@@type"] === FaultPolygonsLayer.name)
-            default_props = FaultPolygonsLayer.defaultProps;
-        else if (layer["@@type"] === PieChartLayer.name)
-            default_props = PieChartLayer.defaultProps;
-        else if (layer["@@type"] === DrawingLayer.name)
-            default_props = DrawingLayer.defaultProps;
-
-        if (default_props) {
-            Object.entries(default_props).forEach(([prop, value]) => {
-                const prop_type = typeof value;
-                if (
-                    ["string", "boolean", "number", "array"].includes(prop_type)
-                ) {
-                    if (layer[prop] === undefined) layer[prop] = value;
-                }
-            });
-        }
-    });
-    return layers;
-}
