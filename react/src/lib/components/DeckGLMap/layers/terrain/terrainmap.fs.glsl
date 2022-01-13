@@ -7,15 +7,29 @@ uniform bool hasTexture;
 uniform sampler2D sampler;
 uniform bool flatShading;
 uniform float opacity;
-uniform float cornerRadius;
+
+uniform float contourReferencePoint;
+uniform float contourInterval;
+
+uniform bool isHillShadingIn2d;
 
 in vec2 vTexCoord;
 in vec3 cameraPosition;
 in vec3 normals_commonspace;
 in vec4 position_commonspace;
 in vec4 vColor;
+in vec4 positions;
 
 out vec4 fragColor;
+
+in vec3 worldPos; // we export this from vertex shader (by injecting into it).
+
+uniform sampler2D colormap;
+
+uniform float valueRangeMin;
+uniform float valueRangeMax;
+uniform float colorMapRangeMin;
+uniform float colorMapRangeMax;
 
 
 void main(void) {
@@ -41,19 +55,36 @@ void main(void) {
    }
 
    if (hasTexture) {
-      float op = color.w;
+      float opcacity = color.w;
       float floatScaler =  1.0 / (256.0 * 256.0 * 256.0 - 1.0);
       vec3 rgb = color.rgb;
       rgb *= vec3(16711680.0, 65280.0, 255.0); //255*256*256, 255*256, 255
       float propertyValue = (rgb.r + rgb.g + rgb.b) * floatScaler;
 
-      // temporary hardcoded colors.
-      float r = 1.0 - propertyValue * 0.4;
-      float g = 1.0 - propertyValue * 0.4;
-      float b = 1.0 * propertyValue;
-      color = vec4(r, g, b, op);
+      // If colorMapRangeMin/Max specified, color map will span this interval.
+      float x  = propertyValue * (valueRangeMax - valueRangeMin) + valueRangeMin;
+      x = (x - colorMapRangeMin) / (colorMapRangeMax - colorMapRangeMin);
+      x = max(0.0, x);
+      x = min(1.0, x);
+
+      color = texture2D(colormap, vec2(x, 0.5));
+      color.a = opcacity;
    }
 
+   bool is_contours = contourReferencePoint != -1.0 && contourInterval != -1.0;
+   if (is_contours) {
+      float height =  (worldPos.z - contourReferencePoint) / contourInterval;
+
+      float f  =  fract(height);
+      float df = fwidth(height);
+
+      // keep: float c = smoothstep(df * 1.0, df * 2.0, f); // smootstep from/to no of pixels distance fronm contour line.
+      float c = smoothstep(0.0, df * 2.0, f);
+
+      color = color * vec4(c, c, c, 1.0);
+   }
+
+   // Use normal lighting.
    vec3 lightColor = lighting_getLightColor(color.rgb, cameraPosition, position_commonspace.xyz, normal);
    fragColor = vec4(lightColor, color.a * opacity);
 
