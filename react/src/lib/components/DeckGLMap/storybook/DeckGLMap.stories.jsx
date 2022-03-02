@@ -1,6 +1,7 @@
 import React from "react";
 import DeckGLMap from "../DeckGLMap";
 import exampleData from "../../../../demo/example-data/deckgl-map.json";
+import { makeStyles } from "@material-ui/core/styles";
 
 export default {
     component: DeckGLMap,
@@ -396,5 +397,61 @@ MultiView.args = {
                 layerIds: ["geojson-line-layer", "geojson-layer", "text-layer"],
             },
         ],
+    },
+};
+
+// stryle for DeckGLGlobalStyleTemplate
+const useStyles = makeStyles({
+    "@global": {
+        "#text": {
+            position: "relative",
+            border: "1px solid black",
+            width: 500,
+        },
+        h1: {
+            position: "relative",
+            border: "1px solid black",
+            width: 500,
+        },
+    },
+    map: {
+        position: "relative",
+        border: "1px solid black",
+        width: 500,
+        height: 500,
+        marginTop: 10,
+        paddingTop: 10,
+    },
+});
+
+// Template for using it with other UI components.
+const DeckGLGlobalStyleTemplate = (args) => {
+    const classes = useStyles();
+    return (
+        <div>
+            <h1>DeckGLMap</h1>
+            <p id="text">
+                A DeckGLMap example with other components using global style.
+            </p>
+            <div className={classes.map}>
+                <DeckGLMap {...args} />
+            </div>
+        </div>
+    );
+};
+
+// Storybook with global style
+export const GlobalStyle = DeckGLGlobalStyleTemplate.bind({});
+GlobalStyle.args = {
+    ...exampleData[0],
+};
+
+GlobalStyle.parameters = {
+    docs: {
+        description: {
+            story: "A DeckGLMap example with other components using global style.",
+        },
+        inlineStories: false,
+        iframeHeight: 500,
     },
 };
