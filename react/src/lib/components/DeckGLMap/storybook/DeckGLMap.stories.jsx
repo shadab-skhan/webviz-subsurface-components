@@ -1,6 +1,7 @@
 import React from "react";
 import DeckGLMap from "../DeckGLMap";
 import exampleData from "../../../../demo/example-data/deckgl-map.json";
+import { makeStyles } from "@material-ui/core/styles";
 
 export default {
     component: DeckGLMap,
@@ -397,4 +398,40 @@ MultiView.args = {
             },
         ],
     },
+};
+
+// stryle for DeckGLGlobalStyleTemplate
+const useStyles = makeStyles({
+    mapContainer: {
+        position: "relative",
+        border: "1px solid black",
+        width: 500,
+        height: 500,
+        marginTop: 10,
+        paddingTop: 10,
+    },
+    settingsContainer: {
+        position: "relative",
+        border: "1px solid black",
+        width: 500,
+    },
+});
+
+// Template for using it with other UI components.
+const DeckGLGlobalStyleTemplate = (args) => {
+    const classes = useStyles();
+    return (
+        <div>
+            <div className={classes.settingsContainer}>Map component</div>
+            <div className={classes.mapContainer}>
+                <DeckGLMap {...args} />
+            </div>
+        </div>
+    );
+};
+
+// Storybook with global style
+export const GlobalStyle = DeckGLGlobalStyleTemplate.bind({});
+GlobalStyle.args = {
+    ...exampleData[0],
 };
