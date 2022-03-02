@@ -402,18 +402,25 @@ MultiView.args = {
 
 // stryle for DeckGLGlobalStyleTemplate
 const useStyles = makeStyles({
-    mapContainer: {
+    "@global": {
+        "#text": {
+            position: "relative",
+            border: "1px solid black",
+            width: 500,
+        },
+        h1: {
+            position: "relative",
+            border: "1px solid black",
+            width: 500,
+        },
+    },
+    map: {
         position: "relative",
         border: "1px solid black",
         width: 500,
         height: 500,
         marginTop: 10,
         paddingTop: 10,
-    },
-    settingsContainer: {
-        position: "relative",
-        border: "1px solid black",
-        width: 500,
     },
 });
 
@@ -422,8 +429,11 @@ const DeckGLGlobalStyleTemplate = (args) => {
     const classes = useStyles();
     return (
         <div>
-            <div className={classes.settingsContainer}>Map component</div>
-            <div className={classes.mapContainer}>
+            <h1>DeckGLMap</h1>
+            <p id="text">
+                A DeckGLMap example with other components using global style.
+            </p>
+            <div className={classes.map}>
                 <DeckGLMap {...args} />
             </div>
         </div>
@@ -434,4 +444,14 @@ const DeckGLGlobalStyleTemplate = (args) => {
 export const GlobalStyle = DeckGLGlobalStyleTemplate.bind({});
 GlobalStyle.args = {
     ...exampleData[0],
+};
+
+GlobalStyle.parameters = {
+    docs: {
+        description: {
+            story: "A DeckGLMap example with other components using global style.",
+        },
+        inlineStories: false,
+        iframeHeight: 500,
+    },
 };
