@@ -1,10 +1,10 @@
-import { SimpleMeshLayer } from "@deck.gl/mesh-layers"; // XXX RENAME LAYER TIL NOE MED MESH??
+import { SimpleMeshLayer } from "@deck.gl/mesh-layers";
 import { SimpleMeshLayerProps } from "@deck.gl/mesh-layers/simple-mesh-layer/simple-mesh-layer";
 import { COORDINATE_SYSTEM } from "@deck.gl/core";
 import fsShader from "!!raw-loader!./terrainmap.fs.glsl";
 import GL from "@luma.gl/constants";
 import { Texture2D } from "@luma.gl/core";
-import { DeckGLLayerContext } from "../../components/DeckGLWrapper";
+import { DeckGLLayerContext } from "../../components/Map";
 import { colorTablesArray, rgbValues } from "@emerson-eps/color-tables/";
 
 const DEFAULT_TEXTURE_PARAMETERS = {
@@ -14,7 +14,7 @@ const DEFAULT_TEXTURE_PARAMETERS = {
     [GL.TEXTURE_WRAP_T]: GL.CLAMP_TO_EDGE,
 };
 
-const DECODER = {
+export const DECODER = {
     rScaler: 256 * 256,
     gScaler: 256,
     bScaler: 1,
@@ -55,11 +55,14 @@ export interface TerrainMapLayerProps<D> extends SimpleMeshLayerProps<D> {
     // Contourlines reference point and interval.
     contours: [number, number];
 
+    // Contourlines may be calculated either on depth/z-value or on property/texture value
+    isContoursDepth: boolean;
+
     // Name of color map.
     colorMapName: string;
 
     // Min and max property values.
-    valueRange: [number, number];
+    propertyValueRange: [number, number];
 
     // Use color map in this range.
     colorMapRange: [number, number];
@@ -69,16 +72,17 @@ export interface TerrainMapLayerProps<D> extends SimpleMeshLayerProps<D> {
 }
 
 const defaultProps = {
-    data: [{ position: [0, 0], angle: 0, color: [255, 0, 0] }], // dummy data
+    data: [{ position: [0, 0], angle: 0, color: [255, 0, 0, 0] }], // dummy data
 
     getPosition: (d: DataItem) => d.position,
     getColor: (d: DataItem) => d.color,
     getOrientation: (d: DataItem) => [0, d.angle, 0],
     contours: [-1, -1],
     colorMapName: "",
-    valueRange: [0.0, 1.0],
+    propertyValueRange: [0.0, 1.0],
     colorMapRange: [0.0, 1.0],
     isReadoutDepth: false,
+    isContoursDepth: true,
     coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
     material: {
         ambient: 0.35,
@@ -101,9 +105,10 @@ export default class TerrainMapLayer extends SimpleMeshLayer<
         const contourReferencePoint = this.props.contours[0] ?? -1.0;
         const contourInterval = this.props.contours[1] ?? -1.0;
         const isReadoutDepth = this.props.isReadoutDepth;
+        const isContoursDepth = this.props.isContoursDepth;
 
-        const valueRangeMin = this.props.valueRange[0] ?? 0.0;
-        const valueRangeMax = this.props.valueRange[1] ?? 1.0;
+        const valueRangeMin = this.props.propertyValueRange[0] ?? 0.0;
+        const valueRangeMax = this.props.propertyValueRange[1] ?? 1.0;
 
         // If specified color map will extend from colorMapRangeMin to colorMapRangeMax.
         // Otherwise it will extend from valueRangeMin to valueRangeMax.
@@ -131,6 +136,7 @@ export default class TerrainMapLayer extends SimpleMeshLayer<
                 contourReferencePoint,
                 contourInterval,
                 isReadoutDepth,
+                isContoursDepth,
             },
         });
     }
