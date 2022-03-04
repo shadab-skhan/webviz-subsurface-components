@@ -346,6 +346,7 @@ const Map: React.FC<MapProps> = ({
 
             {scale?.visible ? (
                 <DistanceScale
+                    id="distancescale"
                     zoom={
                         viewState?.zoom
                             ? viewState.zoom
@@ -360,7 +361,9 @@ const Map: React.FC<MapProps> = ({
 
             <StatusIndicator layers={deckGLLayers} isLoaded={isLoaded} />
 
-            {coords?.visible ? <InfoCard pickInfos={hoverInfo} /> : null}
+            {coords?.visible ? (
+                <InfoCard id="InfoCard" pickInfos={hoverInfo} />
+            ) : null}
         </div>
     );
 };

@@ -29,6 +29,8 @@ interface InfoCardDataType {
 }
 
 export interface InfoCardProps {
+    id: string;
+
     /**
      * List of JSON object describing picking information of layers
      * that are under the cursor.

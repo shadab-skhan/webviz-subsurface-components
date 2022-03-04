@@ -3,6 +3,7 @@ import React from "react";
 const convert = require("convert-units");
 
 interface scaleProps {
+    id: string;
     // Needed the zoom value to calculate width in units
     zoom?: number;
     // Scale increment value

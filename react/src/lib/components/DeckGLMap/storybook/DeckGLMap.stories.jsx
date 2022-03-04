@@ -413,6 +413,16 @@ const useStyles = makeStyles({
             border: "1px solid black",
             width: 500,
         },
+        "#InfoCard.table": {
+            top: 0,
+            right: 0,
+        },
+        "#distancescale": {
+            top: "550 !important",
+            left: "550 important",
+            border: "1px solid black",
+            fontColor: "pink !important",
+        },
     },
     map: {
         position: "relative",
