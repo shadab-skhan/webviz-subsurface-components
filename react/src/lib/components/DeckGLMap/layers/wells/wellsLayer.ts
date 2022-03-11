@@ -110,7 +110,7 @@ export default class WellsLayer extends CompositeLayer<
             : (this.props.data as FeatureCollection);
 
         const is3d = this.context.viewport.constructor.name === "OrbitViewport";
-        const positionFormat = is3d ? "XYZ" : "XY";
+        const positionFormat = is3d ? "XYZ" : "XYZ";
 
         const outline = new GeoJsonLayer<Feature>(
             this.getSubLayerProps<Feature>({

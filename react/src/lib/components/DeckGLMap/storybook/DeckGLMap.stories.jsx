@@ -1,6 +1,7 @@
 import React from "react";
 import DeckGLMap from "../DeckGLMap";
 import exampleData from "../../../../demo/example-data/deckgl-map.json";
+import { COORDINATE_SYSTEM } from "@deck.gl/core";
 
 export default {
     component: DeckGLMap,
@@ -441,6 +442,69 @@ ExperimentalMapLayerFloat32Property.args = {
                 id: "view_1",
                 show3D: true,
                 layerIds: [],
+            },
+        ],
+    },
+};
+
+const axes2 = {
+    "@@type": "AxesLayer",
+    id: "axes-layer",
+    bounds: [0, 0, 0, 2000, 3000, 1000],
+};
+
+// Sample data for intersection view
+const sampleGeoJsonDataInWorldCoordinate = {
+    "@@type": "GeoJsonLayer",
+    id: "geojson-layer",
+    name: "Line",
+    coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
+    data: {
+        type: "FeatureCollection",
+        features: [
+            {
+                type: "Feature",
+                properties: {},
+                geometry: {
+                    type: "LineString",
+                    coordinates: [
+                        [500, 1000, 400],
+                        [1500, 2000, 800],
+                    ],
+                },
+            },
+        ],
+    },
+    lineWidthScale: 20,
+    lineWidthMinPixels: 2,
+};
+
+// Intersection view example
+export const IntersectionView = EditDataTemplate.bind({});
+IntersectionView.args = {
+    id: "DeckGLMap",
+    bounds: [0, 0, 2000, 3000],
+    zoom: -3,
+    layers: [
+        //...exampleData[0].layers,
+        sampleGeoJsonDataInWorldCoordinate,
+        axes2,
+    ],
+    views: {
+        layout: [1, 2],
+        showLabel: true,
+        viewports: [
+            {
+                id: "map-view",
+                name: "Map view",
+                show3D: true,
+                layerIds: ["geojson-layer", "axes-layer"],
+            },
+            {
+                id: "intersection_view",
+                name: "Intersection view",
+                show3D: false,
+                layerIds: ["geojson-layer", "axes-layer"],
             },
         ],
     },
