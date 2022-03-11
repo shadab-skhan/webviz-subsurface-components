@@ -446,6 +446,35 @@ ExperimentalMapLayerFloat32Property.args = {
     },
 };
 
+// Intersection view example
+export const IntersectionView = EditDataTemplate.bind({});
+IntersectionView.args = {
+    ...exampleData[0],
+    legend: {
+        visible: false,
+    },
+    zoom: -3.5,
+    layers: [...exampleData[0].layers, axes],
+    views: {
+        layout: [1, 2],
+        showLabel: true,
+        viewports: [
+            {
+                id: "map-view",
+                name: "Map view",
+                show3D: false,
+                layerIds: ["axes-layer", "wells-layer"],
+            },
+            {
+                id: "intersection_view",
+                name: "Intersection view",
+                show3D: false,
+                layerIds: ["axes-layer", "wells-layer"],
+            },
+        ],
+    },
+};
+
 ExperimentalMapLayerFloat32Property.parameters = {
     title: "Test",
     docs: {
