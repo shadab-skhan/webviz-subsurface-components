@@ -2,7 +2,6 @@ import { OrthographicController, View, Viewport } from "@deck.gl/core";
 
 import { Matrix4 } from "@math.gl/core";
 import { pixelsToWorld } from "@math.gl/web-mercator";
-import * as vec2 from "gl-matrix/vec2";
 
 // Displaying in 2d view XZ plane by configuring the view matrix
 const viewMatrix = new Matrix4().lookAt({
@@ -70,40 +69,67 @@ class IntersectionViewport extends Viewport {
         });
     }
 
-    // copied from OrthographicView
-    projectFlat([X, Y, Z]) {
-        const { unitsPerMeter } = this.distanceScales;
-        return [
-            X * unitsPerMeter[0],
-            Y * unitsPerMeter[1],
-            Z * unitsPerMeter[2],
-        ];
+    /**
+     * Common space:
+     * To correctly compose data from various world spaces together,
+     * deck.gl transforms them into common space - a unified, intermediate 3D space
+     * that is a right-handed Cartesian coordinate system. Once positions are in the common space,
+     * it is safe to add, substract, rotate, scale and extrude them as 3D vectors using standard linear algebra.
+     * This is the basis of all geometry processing in deck.gl layers.
+     *
+     * The transformation between the world space and the common space is referred
+     * to in deck.gl documentation as "project" (world space to common space) and
+     * "unproject" (common space to world space), a process controlled by both the specification of the world space,
+     * such as WGS84, and the projection mode, such as Web Mercator.
+     * Projections are implemented as part of deck.gl's core.
+     * More info here:
+     * https://deck.gl/docs/developer-guide/coordinate-systems#:~:text=same%203D%20view.-,Common%20space,-To%20correctly%20compose
+     * Trying to return X and hardcoded Z value
+     */
+
+    /**
+     * Projects xyz (possibly latitude and longitude) to pixel coordinates in window
+     * using viewport projection parameters
+     * - [longitude, latitude] to [x, y]
+     * - [longitude, latitude, Z] => [x, y, z]
+     */
+    project(xyz, { topLeft = true } = {}) {
+        const [X, Y, Z] = super.project(xyz, topLeft);
+        return [X, 0, 400];
     }
 
-    unprojectFlat([x, y, z]) {
-        const { metersPerUnit } = this.distanceScales;
-        return [
-            x * metersPerUnit[0],
-            y * metersPerUnit[1],
-            z * metersPerUnit[2],
-        ];
-    }
+    /**
+     * Unproject pixel coordinates on screen onto world coordinates,
+     * (possibly [lon, lat]) on map.
+     */
+    // unproject(xyz, { topLeft = true, targetZ } = {}) {
+    // }
 
-    // copied from OrthographicView
-    /* Needed by LinearInterpolator */
-    panByPosition(coords, pixel) {
-        const fromLocation = pixelsToWorld(pixel, this.pixelUnprojectionMatrix);
-        const toLocation = this.projectFlat(coords);
+    /**
+     * Projects latitude, longitude (and altitude) to coordinates in the common space.
+     * - Not required
+     */
+    // projectPosition(xyz) {
+    // }
 
-        const translate = vec2.add(
-            [],
-            toLocation,
-            vec2.negate([], fromLocation)
-        );
-        const newCenter = vec2.add([], this.center, translate);
+    // unprojectPosition(xyz) {
+    // }
 
-        return { target: this.unprojectFlat(newCenter) };
-    }
+    /**
+     * Project [lng,lat] on sphere onto [x,y] on 512*512 Mercator Zoom 0 tile.
+     * Performs the nonlinear part of the web mercator projection.
+     * Remaining projection is done with 4x4 matrices which also handles
+     * perspective.
+     */
+    // projectFlat([X, Y, Z]) {
+    // }
+
+    /**
+     * Unproject world point [x,y] on map onto {lat, lon} on sphere
+     *
+     */
+    // unprojectFlat([x, y, z]) {
+    // }
 }
 
 export default class IntersectionView extends View {
