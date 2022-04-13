@@ -18,29 +18,7 @@ import {
 
 import "!vue-style-loader!css-loader!sass-loader!./styles.scss";
 
-import Ajv from "ajv";
-import { ValidateFunction } from "ajv/dist/types/index";
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const inputSchema = require("../../../inputSchema/WellLog.json");
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const inputTemplateSchema = require("../../../inputSchema/WellLogTemplate.json");
-const ajv = new Ajv();
-let schemaErrorTemplate = "";
-let validateTemplate: ValidateFunction<unknown> | null = null;
-try {
-    validateTemplate = ajv.compile(inputTemplateSchema);
-} catch (e) {
-    schemaErrorTemplate = "Wrong JSON schema for WellLogTemplate. " + String(e);
-    console.error(schemaErrorTemplate);
-}
-let schemaError = "";
-let validate: ValidateFunction<unknown> | null = null;
-try {
-    validate = ajv.compile(inputSchema);
-} catch (e) {
-    schemaError = "Wrong JSON schema for WellLog. " + String(e);
-    console.error(schemaError);
-}
+import { validateSchema } from "../../../inputSchema/validator";
 
 import { select } from "d3";
 
@@ -565,15 +543,6 @@ export function editTrack(
     );
 }
 
-function formatSchemaError(validate: ValidateFunction<unknown>): string {
-    const errors = validate.errors;
-    if (!errors || !errors[0]) return "JSON schema validation failed";
-    return (
-        (errors[0].dataPath ? errors[0].dataPath + ": " : "") +
-        errors[0].message
-    );
-}
-
 export interface TrackMouseEvent {
     track: Track;
     type: /*string, */ "click" | "contextmenu" | "dblclick";
@@ -610,13 +579,30 @@ export interface WellLogController {
 import { Info } from "./InfoTypes";
 
 interface Props {
+    /**
+     * Array of JSON objects describing well log data.
+     */
     welllog: WellLog;
+    /**
+     * Prop containing track template data.
+     */
     template: Template;
+    /**
+     * Prop containing color table data.
+     */
     colorTables: ColorTable[];
+    /**
+     * Orientation of the track plots on the screen.
+     */
     horizontal?: boolean;
     primaryAxis: string;
-
+    /**
+     * Show Titles on the tracks
+     */
     hideTitles?: boolean;
+    /**
+     * Hide Legends on the tracks
+     */
     hideLegend?: boolean;
 
     axisTitles: Record<string, string>;
@@ -625,6 +611,9 @@ interface Props {
     maxVisibleTrackNum?: number; // default is horizontal ? 3: 5
     maxContentZoom?: number; // default is 256
 
+    /**
+     * Validate JSON datafile against schems
+     */
     checkDatafileSchema?: boolean;
 
     // callbacks:
@@ -636,13 +625,31 @@ interface Props {
         iTo: number
     ) => void;
 
-    onTrackScroll?: () => void; // called when track scrolling is changed
-    onTrackSelection?: () => void; // called when track selection is changed
-    onContentRescale?: () => void; // called when content zoom and scrolling are changed
-    onContentSelection?: () => void; // called when content zoom and scrolling are changed
+    /**
+     * called when track scrolling is changed
+     */
+    onTrackScroll?: () => void;
+    /**
+     * called when track selection is changed
+     */
+    onTrackSelection?: () => void;
+    /**
+     * called when content zoom and scrolling are changed
+     */
+    onContentRescale?: () => void;
+    /**
+     * called when content zoom and scrolling are changed
+     */
+    onContentSelection?: () => void;
 
-    onTrackMouseEvent?: (wellLogView: WellLogView, ev: TrackMouseEvent) => void; // called when mouse click on a track
-    onTemplateChanged?: () => void; // called when template is changed
+    /**
+     * called when mouse click on a track
+     */
+    onTrackMouseEvent?: (wellLogView: WellLogView, ev: TrackMouseEvent) => void;
+    /**
+     * called when template is changed
+     */
+    onTemplateChanged?: () => void;
 }
 
 interface State {
@@ -841,26 +848,14 @@ class WellLogView extends Component<Props, State> implements WellLogController {
 
         if (checkSchema) {
             //check against the json schema
-            let errorTextTemplate = "";
-            if (!validateTemplate) errorTextTemplate = schemaErrorTemplate;
-            else if (!validateTemplate(this.template))
-                errorTextTemplate = formatSchemaError(validateTemplate);
-            if (errorTextTemplate)
-                errorTextTemplate = "Template: " + errorTextTemplate;
-
-            if (this.props.checkDatafileSchema) {
-                let errorText = "";
-                if (!validate) errorText = schemaError;
-                else if (!validate(this.props.welllog))
-                    errorText = formatSchemaError(validate);
-                if (errorText) {
-                    if (errorText) errorText = "Datafile: " + errorText;
-                    if (errorTextTemplate) errorTextTemplate += "; ";
-                    errorTextTemplate += errorText;
+            try {
+                validateSchema(this.template, "WellLogTemplate");
+                if (this.props.checkDatafileSchema) {
+                    validateSchema(this.props.welllog, "WellLog");
                 }
+            } catch (e) {
+                this.setState({ errorText: String(e) });
             }
-
-            this.setState({ errorText: errorTextTemplate });
         }
 
         if (this.logController) {
@@ -884,7 +879,7 @@ class WellLogView extends Component<Props, State> implements WellLogController {
         });
     }
 
-    /** 
+    /**
       Display current state of track scrolling
       */
     onTrackScroll(): void {
@@ -1263,9 +1258,7 @@ class WellLogView extends Component<Props, State> implements WellLogController {
                 <div
                     style={{ flex: "1, 1" }}
                     className="welllogview"
-                    ref={(el) => {
-                        this.container = el as HTMLElement;
-                    }}
+                    ref={(el) => (this.container = el as HTMLElement)}
                 />
                 {this.state.errorText ? (
                     <div style={{ flex: "0, 0" }} className="welllogview-error">

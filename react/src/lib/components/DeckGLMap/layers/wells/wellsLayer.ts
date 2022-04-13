@@ -1,5 +1,5 @@
 import { CompositeLayer } from "@deck.gl/core";
-import { ExtendedLayerProps } from "../utils/layerTools";
+import { ExtendedLayerProps, isDrawingEnabled } from "../utils/layerTools";
 import { GeoJsonLayer, PathLayer } from "@deck.gl/layers";
 import { RGBAColor } from "@deck.gl/core/utils/color";
 import { subtract, distance, dot } from "mathjs";
@@ -72,19 +72,15 @@ export default class WellsLayer extends CompositeLayer<
     WellsLayerProps<FeatureCollection>
 > {
     onClick(info: WellsPickInfo): boolean {
-        // Disable selection when drawing is enabled
-        if (
-            this.context.layerManager.getLayers({
-                layerIds: ["drawing-layer"],
-            })?.[0].props.mode != "view"
-        ) {
+        // Make selection only when drawing is disabled
+        if (isDrawingEnabled(this.context.layerManager)) {
             return false;
+        } else {
+            (this.context as DeckGLLayerContext).userData.setEditedData({
+                selectedWell: (info.object as Feature).properties?.["name"],
+            });
+            return true;
         }
-
-        (this.context as DeckGLLayerContext).userData.setEditedData({
-            selectedWell: (info.object as Feature).properties?.["name"],
-        });
-        return true;
     }
 
     shouldUpdateState({
@@ -121,6 +117,7 @@ export default class WellsLayer extends CompositeLayer<
                 positionFormat,
                 pointRadiusUnits: "pixels",
                 lineWidthUnits: "pixels",
+                visible: this.props.outline,
                 pointRadiusScale: this.props.pointRadiusScale,
                 lineWidthScale: this.props.lineWidthScale,
             })
@@ -172,6 +169,7 @@ export default class WellsLayer extends CompositeLayer<
                 widthScale: 10,
                 widthMinPixels: 1,
                 miterLimit: 100,
+                visible: this.props.logCurves,
                 getPath: (d: LogCurveDataType): Position[] =>
                     getLogPath(data.features, d, this.props.logrunName),
                 getColor: (d: LogCurveDataType): RGBAColor[] =>
@@ -214,15 +212,7 @@ export default class WellsLayer extends CompositeLayer<
             })
         );
 
-        const layers: (GeoJsonLayer<Feature> | PathLayer<LogCurveDataType>)[] =
-            [colors, highlight];
-        if (this.props.outline) {
-            layers.splice(0, 0, outline);
-        }
-        if (this.props.logCurves) {
-            layers.splice(1, 0, log_layer);
-        }
-
+        const layers = [outline, log_layer, colors, highlight];
         return layers;
     }
 
