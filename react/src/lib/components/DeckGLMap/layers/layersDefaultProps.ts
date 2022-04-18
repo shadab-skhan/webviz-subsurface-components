@@ -109,7 +109,12 @@ export const layersDefaultProps: Record<string, unknown> = {
         wellNameAtTop: false,
         wellNameSize: 14,
         wellNameColor: [0, 0, 255, 255],
+        wellSymbolVisible: false,
+        wellSymbolAtTop: true,
+        wellSymbolSize: 5,
+        wellSymbolColor: [0, 0, 0, 255],
         selectedWell: "@@#editedData.selectedWells", // used to get data from deckgl layer
+        iconAtlas: require("D:/BigLoopAnalytics/webviz-subsurface-components/react/src/demo/example-data/wells-symbols.png"),
     },
     FaultPolygonsLayer: {
         "@@type": "FaultPolygonsLayer",
