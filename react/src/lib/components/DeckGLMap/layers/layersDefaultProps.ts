@@ -113,6 +113,7 @@ export const layersDefaultProps: Record<string, unknown> = {
         wellSymbolAtTop: true,
         wellSymbolSize: 5,
         wellSymbolColor: [0, 0, 0, 255],
+        trajectoryVisible: true,
         selectedWell: "@@#editedData.selectedWells", // used to get data from deckgl layer
         iconAtlas: require("D:/BigLoopAnalytics/webviz-subsurface-components/react/src/demo/example-data/wells-symbols.png"),
     },

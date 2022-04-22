@@ -69,6 +69,11 @@ export const ToggleTypeProps = [
         displayName: "Well symbol at top",
         dependentOnProp: undefined,
     },
+    {
+        id: "trajectoryVisible",
+        displayName: "Trajectory",
+        dependentOnProp: undefined,
+    },
     { id: "logCurves", displayName: "Log curves", dependentOnProp: "logData" },
     {
         id: "isReadoutDepth",

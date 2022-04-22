@@ -30,6 +30,7 @@ import { Position2D } from "@deck.gl/core/utils/positions";
 import { layersDefaultProps } from "../layersDefaultProps";
 import { UpdateStateInfo } from "@deck.gl/core/lib/layer";
 import { DeckGLLayerContext } from "../../components/Map";
+import { features } from "process";
 
 type NumberPair = [number, number];
 type DashAccessorFunction = (
@@ -61,6 +62,7 @@ export interface WellsLayerProps<D> extends ExtendedLayerProps<D> {
     wellSymbolAtTop: boolean;
     wellSymbolSize: number;
     wellSymbolColor: RGBAColor;
+    trajectoryVisible: boolean;
 }
 
 export interface LogCurveDataType {
@@ -156,9 +158,12 @@ export default class WellsLayer extends CompositeLayer<
         }
 
         const refine = this.props.refine;
-        const data = refine
+        let data = refine
             ? splineRefine(this.props.data as FeatureCollection) // smooth well paths.
             : (this.props.data as FeatureCollection);
+
+        const hide_trajectory = !this.props.trajectoryVisible;
+        if (hide_trajectory) data = removeTrajectoryData(data);
 
         const is3d = this.context.viewport.constructor.name === "OrbitViewport";
         const positionFormat = is3d ? "XYZ" : "XY";
@@ -231,6 +236,7 @@ export default class WellsLayer extends CompositeLayer<
             })
         );
 
+        const show_log = this.props.trajectoryVisible && this.props.logCurves;
         const log_layer = new PathLayer<LogCurveDataType>(
             this.getSubLayerProps<LogCurveDataType>({
                 id: "log_curve",
@@ -240,7 +246,7 @@ export default class WellsLayer extends CompositeLayer<
                 widthScale: 10,
                 widthMinPixels: 1,
                 miterLimit: 100,
-                visible: this.props.logCurves,
+                visible: show_log,
                 getPath: (d: LogCurveDataType): Position[] =>
                     getLogPath(data.features, d, this.props.logrunName),
                 getColor: (d: LogCurveDataType): RGBAColor[] =>
@@ -416,14 +422,26 @@ function getAnnotationPosition(
     name_at_top: boolean,
     view_is_3d: boolean
 ): Position | null {
-    const well_coordinates = getWellCoordinates(well_data);
-
     if (name_at_top) {
-        const top = well_coordinates.at(0);
+        let top;
+
+        // Read top position from Point geometry, if not present, read it from LineString geometry
+        const well_head = getWellHeadPosition(well_data);
+        if (well_data) top = well_head;
+        else {
+            const trajectory = getTrajectory(well_data);
+            top = trajectory?.at(0);
+        }
+
         // using z=0 for orthographic view to keep label above other other layers
         if (top) return view_is_3d ? top : [top[0], top[1], 0];
     } else {
-        const bot = well_coordinates.at(-1);
+        let bot;
+        // if trajectory is not present, return top position from Point geometry
+        const trajectory = getTrajectory(well_data);
+        if (trajectory) bot = trajectory?.at(-1);
+        else bot = getWellHeadPosition(well_data);
+
         // using z=0 for orthographic view to keep label above other other layers
         if (bot) return view_is_3d ? bot : [bot[0], bot[1], 0];
     }
@@ -440,26 +458,46 @@ function getWellObjectByName(
     );
 }
 
-// Return well head coordinates from Point Geometry
-function getWellHeadCoordinates(well_object?: Feature): Position {
-    return (
-        (well_object?.geometry as GeometryCollection)?.geometries.find(
-            (item) => item.type == "Point"
-        ) as Point
-    )?.coordinates;
+function getPointGeometry(well_object: Feature): Point {
+    return (well_object.geometry as GeometryCollection)?.geometries.find(
+        (item) => item.type == "Point"
+    ) as Point;
 }
 
-// Return Well/Trajectory coordinates from LineString Geometry
-function getWellCoordinates(well_object?: Feature): Position[] {
-    return (
-        (well_object?.geometry as GeometryCollection)?.geometries.find(
-            (item) => item.type == "LineString"
-        ) as LineString
-    )?.coordinates;
+function getLineStringGeometry(well_object: Feature): LineString {
+    return (well_object.geometry as GeometryCollection)?.geometries.find(
+        (item) => item.type == "LineString"
+    ) as LineString;
 }
 
-function getWellMds(well_object?: Feature): number[] {
-    return well_object?.properties?.["md"][0];
+// Return well head position from Point Geometry
+function getWellHeadPosition(well_object: Feature): Position {
+    return getPointGeometry(well_object)?.coordinates;
+}
+
+// Return Trajectory data from LineString Geometry
+function getTrajectory(well_object: Feature): Position[] {
+    return getLineStringGeometry(well_object)?.coordinates;
+}
+
+function getWellMds(well_object: Feature): number[] {
+    return well_object.properties?.["md"][0];
+}
+
+// return wells data with only Point Geometry
+function removeTrajectoryData(data: FeatureCollection): FeatureCollection {
+    return {
+        ...data,
+        features: data.features.map((feature) => {
+            return {
+                ...feature,
+                geometry: {
+                    ...feature.geometry,
+                    geometries: [getPointGeometry(feature)],
+                },
+            };
+        }),
+    };
 }
 
 function getNeighboringMdIndices(mds: number[], md: number): number[] {
@@ -473,7 +511,7 @@ function getLogPath(
     logrun_name: string
 ): Position[] {
     const well_object = getWellObjectByName(wells_data, d.header.well);
-    const well_xyz = getWellCoordinates(well_object);
+    const well_xyz = getTrajectory(well_object);
     const well_mds = getWellMds(well_object);
 
     if (
@@ -649,7 +687,7 @@ function getMd(coord: Position, feature: Feature): number | null {
     if (!feature.properties?.["md"]?.[0] || !feature.geometry) return null;
 
     const measured_depths = feature.properties["md"][0] as number[];
-    const trajectory3D = getWellCoordinates(feature);
+    const trajectory3D = getTrajectory(feature);
 
     if (trajectory3D == undefined) return null;
 
@@ -681,11 +719,11 @@ function getMdProperty(
 }
 
 function getTvd(coord: Position, feature: Feature): number | null {
-    const trajectory3D = getWellCoordinates(feature);
+    const trajectory3D = getTrajectory(feature);
 
     // if trajectory is not found or if it has a data single point then get tvd from well head
     if (trajectory3D == undefined || trajectory3D?.length <= 1) {
-        const wellhead_xyz = getWellHeadCoordinates(feature);
+        const wellhead_xyz = getWellHeadPosition(feature);
         return wellhead_xyz?.[2] ?? null;
     }
     let trajectory;
