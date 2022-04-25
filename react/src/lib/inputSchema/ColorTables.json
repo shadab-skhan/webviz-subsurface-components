@@ -1,6 +1,7 @@
 {
     "$comment": "ColorTables data schema",
     "$id": "inputSchema/ColorTables.json",
+    "version": "0.1.0",
     "type": "array",
     "items": { "$ref": "#/definitions/color-table" },
     "definitions": {

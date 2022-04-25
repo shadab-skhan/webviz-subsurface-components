@@ -1,6 +1,7 @@
 {
     "$comment": "See https://jsonwelllogformat.org",
     "$id": "inputSchema/WellLog.json",
+    "version": "0.1.0",
     "type": "object",
     "properties": {
         "header": { "$ref": "#/definitions/header" },

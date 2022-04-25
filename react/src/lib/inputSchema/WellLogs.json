@@ -1,5 +1,6 @@
 {
     "$id": "inputSchema/WellLogs.json",
+    "version": "0.1.0",
     "type": "array",
     "items": { "$ref": "./WellLog.json#" }
 }
