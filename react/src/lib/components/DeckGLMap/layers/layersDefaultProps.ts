@@ -90,6 +90,7 @@ export const layersDefaultProps: Record<string, unknown> = {
         pickable: true,
         valueRange: { type: "array", value: [0, 1] },
         colorMapRange: { type: "array", value: [0, 1] },
+        material: true,
     },
     WellsLayer: {
         "@@type": "WellsLayer",
@@ -99,11 +100,16 @@ export const layersDefaultProps: Record<string, unknown> = {
         opacity: 1,
         lineWidthScale: 5,
         pointRadiusScale: 8,
+        style: { dash: false },
         outline: true,
         logRadius: 6,
         logCurves: true,
         refine: true,
         visible: true,
+        wellNameVisible: false,
+        wellNameAtTop: false,
+        wellNameSize: 14,
+        wellNameColor: [0, 0, 0, 255],
         selectedWell: "@@#editedData.selectedWells", // used to get data from deckgl layer
     },
     FaultPolygonsLayer: {
@@ -127,6 +133,12 @@ export const layersDefaultProps: Record<string, unknown> = {
         "@@type": "AxesLayer",
         name: "Axes",
         id: "axes-layer",
+        visible: true,
+    },
+    NorthArrow3DLayer: {
+        "@@type": "NorthArrow3DLayer",
+        name: "NorthArrow3D",
+        id: "north-arrow-layer",
         visible: true,
     },
     DrawingLayer: {

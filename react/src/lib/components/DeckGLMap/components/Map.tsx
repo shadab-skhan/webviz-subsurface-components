@@ -17,7 +17,7 @@ import { DeckGLView } from "./DeckGLView";
 import { Viewport } from "@deck.gl/core";
 import { colorTablesArray } from "@emerson-eps/color-tables/";
 import { LayerProps, LayerContext } from "@deck.gl/core/lib/layer";
-import { ViewStateProps } from "@deck.gl/core/lib/deck";
+import Deck, { ViewStateProps } from "@deck.gl/core/lib/deck";
 import { ViewProps } from "@deck.gl/core/views/view";
 import { isEmpty } from "lodash";
 import ColorLegend from "./ColorLegend";
@@ -32,9 +32,10 @@ import {
     validateColorTables,
     validateLayers,
 } from "../../../inputSchema/schemaValidationUtil";
+import { DrawingPickInfo } from "../layers/drawing/drawingLayer";
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const colorTables = require("@emerson-eps/color-tables/src/component/color-tables.json");
+const colorTables = require("@emerson-eps/color-tables/dist/component/color-tables.json");
 
 export interface ViewportType {
     /**
@@ -215,13 +216,21 @@ const Map: React.FC<MapProps> = ({
     onMouseEvent,
     children,
 }: MapProps) => {
-    // state for initial views prop (target and zoom) of DeckGL component
-    const [initialViewState, setInitialViewState] =
-        useState<Record<string, unknown>>();
+    const deckRef = useRef<DeckGL>(null);
+
+    // state for views prop (target and zoom) of DeckGL component
+    const [viewState, setViewState] = useState<ViewStateProps>();
     useEffect(() => {
-        if (bounds == undefined) return;
-        setInitialViewState(getInitialViewState(bounds, zoom));
+        if (bounds === undefined) return;
+        setViewState(getViewState(bounds, zoom, deckRef.current?.deck));
     }, [bounds, zoom]);
+
+    // calculate camera zoom on view resize while maintaining pan
+    const onResize = useCallback(() => {
+        if (bounds === undefined) return;
+        const vs = getViewState(bounds, zoom, deckRef.current?.deck);
+        setViewState({ ...viewState, zoom: vs.zoom });
+    }, [deckRef, viewState]);
 
     // state for views prop of DeckGL component
     const [viewsProps, setViewsProps] = useState<ViewProps[]>([]);
@@ -343,39 +352,6 @@ const Map: React.FC<MapProps> = ({
         }
     };
 
-    const deckRef = useRef<DeckGL>(null);
-    const [viewState, setViewState] = useState<ViewStateProps>();
-
-    // calculate camera position and zoom on view resize
-    const onResize = useCallback(() => {
-        if (deckRef == null) return;
-
-        const deck = deckRef.current?.deck;
-        if (deck && bounds) {
-            const width = deck.width;
-            const height = deck.height;
-            const [west, south] = [bounds[0], bounds[1]];
-            const [east, north] = [bounds[2], bounds[3]];
-            const fitted_bound = fitBounds({
-                width,
-                height,
-                bounds: [
-                    [west, south],
-                    [east, north],
-                ],
-            });
-
-            const zoom_defined_by_consumer = zoom != undefined;
-            const view_state = {
-                target: [fitted_bound.x, fitted_bound.y, 0],
-                zoom: zoom_defined_by_consumer ? zoom : fitted_bound.zoom,
-                rotationX: 90, // look down z -axis.
-                rotationOrbit: 0,
-            };
-            setViewState(view_state);
-        }
-    }, [deckRef]);
-
     const [isLoaded, setIsLoaded] = useState<boolean>(false);
     const onAfterRender = useCallback(() => {
         if (deckGLLayers) {
@@ -432,7 +408,6 @@ const Map: React.FC<MapProps> = ({
             <DeckGL
                 id={id}
                 viewState={viewState}
-                initialViewState={initialViewState}
                 views={deckGLViews}
                 layerFilter={layerFilter}
                 layers={deckGLLayers}
@@ -447,21 +422,25 @@ const Map: React.FC<MapProps> = ({
                 }
                 // @ts-expect-error: Fix type in WellsLayer
                 getTooltip={(
-                    info: PickInfo<unknown> | WellsPickInfo
+                    info: PickInfo<unknown>
                 ): string | null | undefined => {
                     if ((info as WellsPickInfo)?.logName) {
                         return (info as WellsPickInfo)?.logName;
+                    } else if (info.layer?.id === "drawing-layer") {
+                        return (info as DrawingPickInfo).measurement?.toFixed(
+                            2
+                        );
                     } else {
                         const feat = info.object as Feature;
                         return feat?.properties?.["name"];
                     }
                 }}
                 ref={deckRef}
-                onHover={onHover}
-                onClick={onClick}
                 onViewStateChange={(viewport) =>
                     setViewState(viewport.viewState)
                 }
+                onHover={onHover}
+                onClick={onClick}
                 onResize={onResize}
                 onAfterRender={onAfterRender}
             >
@@ -591,23 +570,28 @@ function jsonToObject(
     return jsonConverter.convert(filtered_data);
 }
 
-// returns initial view state for DeckGL
-function getInitialViewState(
+// return viewstate with computed bounds to fit the data in viewport
+function getViewState(
     bounds: [number, number, number, number],
-    zoom?: number
-): Record<string, unknown> {
-    const width = bounds[2] - bounds[0]; // right - left
-    const height = bounds[3] - bounds[1]; // top - bottom
+    zoom?: number,
+    deck?: Deck
+): ViewStateProps {
+    let width = bounds[2] - bounds[0]; // right - left
+    let height = bounds[3] - bounds[1]; // top - bottom
+    if (deck) {
+        width = deck.width;
+        height = deck.height;
+    }
 
-    const initial_view_state = {
-        // target to center of the bound
-        target: [bounds[0] + width / 2, bounds[1] + height / 2, 0],
-        zoom: zoom ?? 0,
-        rotationX: 90, // look down z -axis.
+    const padding = 20;
+    const fitted_bound = fitBounds({ width, height, bounds, padding });
+    const view_state = {
+        target: [fitted_bound.x, fitted_bound.y, 0],
+        zoom: zoom ?? fitted_bound.zoom,
+        rotationX: 90, // look down z -axis
         rotationOrbit: 0,
     };
-
-    return initial_view_state;
+    return view_state;
 }
 
 // construct views object for DeckGL component
@@ -615,6 +599,7 @@ function getViews(views: ViewsType | undefined): Record<string, unknown>[] {
     const deckgl_views = [];
     // if props for multiple viewport are not proper, return 2d view
     const far = 9999.9;
+    const near = 0.0001;
     if (!views || !views.viewports || !views.layout) {
         deckgl_views.push({
             "@@type": "OrthographicView",
@@ -626,6 +611,7 @@ function getViews(views: ViewsType | undefined): Record<string, unknown>[] {
             height: "100%",
             flipY: false,
             far,
+            near,
         });
     } else {
         let yPos = 0;
@@ -660,6 +646,7 @@ function getViews(views: ViewsType | undefined): Record<string, unknown>[] {
                     height: 99.5 / nY + "%",
                     flipY: false,
                     far,
+                    near,
                 });
                 xPos = xPos + 99.5 / nX;
             }
