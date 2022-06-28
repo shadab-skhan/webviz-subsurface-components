@@ -4,6 +4,7 @@ import { Layer } from "@deck.gl/core";
 import { GeoJsonLayer, PathLayer, TextLayer } from "@deck.gl/layers";
 import { RGBAColor } from "@deck.gl/core/utils/color";
 import { PathStyleExtension } from "@deck.gl/extensions";
+import UnfoldedPathExtention from "./utils/unfoldedExtention";
 import { subtract, distance, dot } from "mathjs";
 import {
     rgbValues,
@@ -283,10 +284,11 @@ export default class WellsLayer extends CompositeLayer<
         const isDashed = !!this.props.lineStyle?.dash;
 
         const extensions = [
-            new PathStyleExtension({
-                dash: isDashed,
-                highPrecisionDash: isDashed,
-            }),
+            // new PathStyleExtension({
+            //     dash: isDashed,
+            //     highPrecisionDash: isDashed,
+            // }),
+            new UnfoldedPathExtention(),
         ];
 
         const outline = new GeoJsonLayer<Feature>(

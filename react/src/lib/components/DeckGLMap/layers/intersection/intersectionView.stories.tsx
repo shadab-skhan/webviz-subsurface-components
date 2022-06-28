@@ -35,11 +35,9 @@ const data = {
 
 // Sample data for intersection view
 const sampleDataExtendedPathLayer = {
-    "@@type": "UnfoldedGeoJsonLayer",
+    "@@type": "WellsLayer",
     id: "enhanced-path-layer",
     data: "@@#resources.wellsdata",
-    lineWidthScale: 20,
-    lineBillboard: true,
 };
 
 const axes2 = {
