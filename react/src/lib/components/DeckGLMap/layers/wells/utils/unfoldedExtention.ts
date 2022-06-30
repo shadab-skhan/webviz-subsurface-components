@@ -20,6 +20,7 @@
 
 import { LayerExtension, _mergeShaders as mergeShaders } from "@deck.gl/core";
 import GL from "@luma.gl/constants";
+import { Model, Geometry } from "@luma.gl/core";
 import {
     dashShaders,
     offsetShaders,
@@ -30,72 +31,81 @@ import { LineString } from "geojson";
 import { zip } from "lodash";
 import { distance } from "mathjs";
 
-function getUnfoldedPath(object) {
-    if (!object) return null;
-    const worldCoordinates = object; //(object.geometry as LineString).coordinates;
-    const z = worldCoordinates.map((v) => v[2]);
-    const delta = worldCoordinates.map((v, i, coordinates) => {
-        const prev = coordinates[i - 1] || v;
-        return distance([prev[0], prev[1]], [v[0], v[1]]);
-    });
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const a: any[] = [];
-    delta.forEach((d) => {
-        const prev = a.at(-1) || 0;
-        a.push(d + prev);
-    });
-    const planeY = 2000;
-    const vAbscissa = zip(a, [...a].fill(planeY), z);
-
-    (object.geometry as LineString).coordinates = vAbscissa;
-
-    // return object.clone({
-    //     geometry: {
-    //         ...object.geometry,
-    //         coordinates: vAbscissa,
-    //     },
-    // });
-    return object;
-}
-
 export default class UnfoldedPathExtention extends LayerExtension {
     isEnabled(layer) {
         return layer.state.pathTesselator;
     }
 
-    initializeState(context, extension) {
+    // initializeState() {
+    //     const { gl } = this.context;
+    //     const attributeManager = this.getAttributeManager();
+    //     attributeManager.add({
+    //         positions: { size: 3, noAlloc: true },
+    //         // texCoords: { size: 2, noAlloc: true },
+    //     });
+    //     this.setState({
+    //         model: this._getModel(gl),
+    //     });
+    // }
+
+    // _getModel(gl) {
+    //     const { vertexCount } = this.props;
+
+    //     return new Model(gl, {
+    //         ...this.getShaders(),
+    //         id: this.props.id,
+    //         geometry: new Geometry({
+    //             drawMode: GL.TRIANGLES,
+    //             attributes: {
+    //                 positions: new Float32Array(this.getUnfoldedPath(attribute.positions)),
+    //             },
+    //         }),
+    //         isInstanced: true,
+    //     });
+    // }
+
+    draw({ uniforms, moduleParameters, context }, extension): void {
         const attributeManager = this.getAttributeManager();
         if (!attributeManager || !extension.isEnabled(this)) {
             // This extension only works with the PathLayer
             return;
         }
 
-        extension.enabled = true;
-        attributeManager.addInstanced({
-            positions: {
-                size: 3,
-                // Start filling buffer from 1 vertex in
-                vertexOffset: 1,
-                type: GL.DOUBLE,
-                fp64: this.use64bitPositions(),
-                accessor: "getPath",
-                transform: extension.getUnfoldedPath.bind(this),
-                shaderAttributes: {
-                    instanceLeftPositions: {
-                        vertexOffset: 0,
-                    },
-                    instanceStartPositions: {
-                        vertexOffset: 1,
-                    },
-                    instanceEndPositions: {
-                        vertexOffset: 2,
-                    },
-                    instanceRightPositions: {
-                        vertexOffset: 3,
-                    },
+        if (context.viewport.constructor.name === "IntersectionViewport") {
+            this.state.model.draw({
+                attributes: {
+                    positions: [0 , 1, 0, -1, 0, -1, 0 , 1, 0, -1, 0, -1],
                 },
-            },
-        });
+            });
+
+            // console.log("b", moduleParameters);
+            // const mergedModuleParams = {
+            //     ...moduleParameters,
+            //     data: [
+            //         {
+            //             ...moduleParameters.data[0],
+            //             geometry: {
+            //                 ...moduleParameters.data[0].geometry,
+            //                 coordinates: [
+            //                     [0.0, 2000.0, -400.0],
+            //                     [700.0, 2000.0, -600.0],
+            //                     [1000.0, 2000.0, -400.0],
+            //                 ],
+            //             },
+            //         },
+            //     ],
+            // };
+            // console.log("a", mergedModuleParams);
+            // this.setModuleParameters(mergedModuleParams);
+            // this.draw(
+            //     {
+            //         uniforms: uniforms,
+            //         moduleParameters: mergedModuleParams,
+            //         context: context,
+            //     },
+            //     extension
+            // );
+        }
     }
 
     getUnfoldedPath(path) {
@@ -113,7 +123,6 @@ export default class UnfoldedPathExtention extends LayerExtension {
         });
         const planeY = 2000;
         const vAbscissa = zip(a, [...a].fill(planeY), z);
-        console.log(vAbscissa);
         return vAbscissa;
     }
 }
