@@ -39,7 +39,7 @@ const ColorLegend: React.FC<ColorLegendProps> = ({
         DiscreteLegendDataType | ContinuousLegendDataType
     >();
     React.useEffect(() => {
-        const legend_data = layer.getLegendData?.() ?? layer.state?.legend;
+        const legend_data = layer.getLegendData?.();
         setLegendData(legend_data);
     }, [layer.props, layer.state?.legend]);
 

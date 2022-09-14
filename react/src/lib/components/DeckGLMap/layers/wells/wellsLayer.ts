@@ -268,6 +268,17 @@ export default class WellsLayer extends CompositeLayer<
     getLegendData(
         value: LogCurveDataType[]
     ): ContinuousLegendDataType | DiscreteLegendDataType | null {
+        if (arguments.length == 0) {
+            const log_layer = this.getLogLayer();
+            const data = log_layer?.props.data;
+            return getLegendData(
+                data,
+                "",
+                this.props.logName,
+                this.props.logColor
+            );
+        }
+
         return getLegendData(
             value,
             "",
@@ -284,7 +295,7 @@ export default class WellsLayer extends CompositeLayer<
 
     getLogLayer(): Layer<unknown> {
         return getLayersById(
-            this.internalState?.subLayers,
+            this.context?.layerManager?.layers,
             "wells-layer-log_curve"
         )?.[0];
     }
