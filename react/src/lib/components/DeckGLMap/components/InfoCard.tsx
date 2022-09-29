@@ -6,8 +6,6 @@ import TableBody from "@material-ui/core/TableBody";
 import TableCell from "@material-ui/core/TableCell";
 import TableContainer from "@material-ui/core/TableContainer";
 import TableRow from "@material-ui/core/TableRow";
-import Paper from "@material-ui/core/Paper";
-
 import { Button, Icon } from "@equinor/eds-core-react";
 import { arrow_drop_up, arrow_drop_down } from "@equinor/eds-icons";
 
@@ -55,6 +53,9 @@ const useStyles = makeStyles({
             borderRadius: "5px",
             position: "absolute",
             bottom: 0,
+            left: 0,
+            marginLeft: "3px",
+            marginBottom: "3px",
         },
     },
     icon_style: {
@@ -160,7 +161,6 @@ const InfoCard: React.FC<InfoCardProps> = (props: InfoCardProps) => {
             setInfoCardData(null);
             return;
         }
-
         const topObject = props.pickInfos[0];
         if (
             topObject.coordinate === undefined ||
@@ -170,8 +170,14 @@ const InfoCard: React.FC<InfoCardProps> = (props: InfoCardProps) => {
         }
 
         const xy_properties: PropertyDataType[] = [];
-        xy_properties.push({ name: "x", value: topObject.coordinate[0] });
-        xy_properties.push({ name: "y", value: topObject.coordinate[1] });
+        xy_properties.push({
+            name: "x",
+            value: Number(topObject.coordinate[0]).toFixed(2).toString() + " m",
+        });
+        xy_properties.push({
+            name: "y",
+            value: Number(topObject.coordinate[1]).toFixed(2).toString() + " m",
+        });
 
         const info_card_data: InfoCardDataType[] = [];
         info_card_data.push({
@@ -191,6 +197,7 @@ const InfoCard: React.FC<InfoCardProps> = (props: InfoCardProps) => {
 
             // collecting card data for 1st type
             const zValue = (info as PropertyMapPickInfo).propertyValue;
+
             if (typeof zValue !== "undefined") {
                 const property = xy_properties.find(
                     (item) => item.name === layer_name
@@ -234,7 +241,7 @@ const InfoCard: React.FC<InfoCardProps> = (props: InfoCardProps) => {
     const classes = useStyles();
     return (
         infoCardData && (
-            <TableContainer component={Paper}>
+            <TableContainer>
                 <Table aria-label="info-card" className={classes.table}>
                     <TableBody>
                         {infoCardData.map(

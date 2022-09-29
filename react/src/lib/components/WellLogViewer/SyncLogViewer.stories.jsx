@@ -172,10 +172,25 @@ Default.args = {
     welllogs: [
         require("../../../demo/example-data/L898MUD.json")[0],
         require("../../../demo/example-data/L916MUD.json")[0],
+        require("../../../demo/example-data/Lis1.json")[0],
     ],
     templates: [
         require("../../../demo/example-data/synclog_template.json"),
         require("../../../demo/example-data/synclog_template.json"),
     ],
     colorTables: require("../../../demo/example-data/color-tables.json"),
+    wellpicks: [
+        {
+            wellpick: require("../../../demo/example-data/wellpicks.json")[0],
+            name: "HORIZON",
+            colorTables: require("../../../demo/example-data/wellpick_colors.json"),
+            color: "Stratigraphy",
+        },
+        {
+            wellpick: require("../../../demo/example-data/wellpicks.json")[1],
+            name: "HORIZON",
+            colorTables: require("../../../demo/example-data/wellpick_colors.json"),
+            color: "Stratigraphy",
+        },
+    ],
 };

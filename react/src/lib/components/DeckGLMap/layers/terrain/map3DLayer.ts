@@ -14,6 +14,7 @@ import { load } from "@loaders.gl/core";
 import { Vector3 } from "@math.gl/core";
 import { getModelMatrix } from "../utils/layerTools";
 import { isEqual } from "lodash";
+import { ContinuousLegendDataType } from "../../components/ColorLegend";
 
 type MeshType = {
     attributes: {
@@ -23,6 +24,41 @@ type MeshType = {
     };
     indices: { value: Uint32Array; size: number };
 };
+
+// These two types both describes the mesh' extent in the horizontal plane.
+type Bounds = [number, number, number, number];
+type Frame = {
+    // mesh origin
+    origin: [number, number];
+
+    // cells size in each direction.
+    increment: [number, number];
+
+    // no cells in each direction.
+    count: [number, number];
+
+    // Rotates map counterclockwise in degrees around 'rotPoint' specified below.
+    rotDeg?: number;
+
+    // Point to rotate around using 'rotDeg'. Defaults to mesh origin.
+    rotPoint?: [number, number];
+};
+
+function getMinMax(dim: Frame): Bounds {
+    const nx = dim.count[0];
+    const ny = dim.count[1];
+
+    const dx = dim.increment[0];
+    const dy = dim.increment[1];
+
+    const xmin = dim.origin[0];
+    const ymin = dim.origin[1];
+
+    const xmax = xmin + nx * dx;
+    const ymax = ymin + ny * dy;
+
+    return [xmin, ymin, xmax, ymax];
+}
 
 function mapToRange(resolved_mesh: MeshType, meshValueRange: [number, number]) {
     const floatScaler = 1.0 / (256.0 * 256.0 * 256.0 - 1.0);
@@ -35,19 +71,77 @@ function mapToRange(resolved_mesh: MeshType, meshValueRange: [number, number]) {
     for (let i = 0; i < nvertexs; i++) {
         let Z = vertexs[i * 3 + 2];
         Z = Z * floatScaler; // maps to [0-1]
-        Z = Z * delta + min;
+        Z = min + Z * delta;
         vertexs[i * 3 + 2] = -Z; // depths are positive along negative z axis.
     }
 
     return resolved_mesh;
 }
 
-function add_normals(resolved_mesh: MeshType) {
+function add_normals(
+    resolved_mesh: MeshType,
+    meshImageData: ImageData,
+    bounds: [number, number, number, number]
+) {
     const vertexs = resolved_mesh.attributes.POSITION.value;
-    const indices = resolved_mesh.indices.value;
-    const ntriangles = indices.length / 3;
+    let indices = resolved_mesh.indices.value;
+    let ntriangles = indices.length / 3;
 
-    //Calculate one normal pr triangle. And record the triangles each vertex' belongs to.
+    ////////////////////////////////////////////////////////////////
+    // Remove all triangles that are in undefined areas. That is triangles which
+    const [xmin, ymin, xmax, ymax] = bounds;
+
+    const w = meshImageData.width;
+    const h = meshImageData.height;
+
+    const int_view = new Uint8ClampedArray(
+        meshImageData.data,
+        0,
+        meshImageData.data.length
+    );
+
+    const dx = (xmax - xmin) / (w - 1);
+    const dy = (ymax - ymin) / (h - 1);
+
+    const indices_reduced = [];
+    for (let tn = 0; tn < ntriangles; tn++) {
+        const i0 = indices[tn * 3 + 0];
+        const i1 = indices[tn * 3 + 1];
+        const i2 = indices[tn * 3 + 2];
+
+        const triangle_indices = [i0, i1, i2];
+
+        const alphas = triangle_indices.map((index) => {
+            const x = vertexs[index * 3 + 0];
+            const y = vertexs[index * 3 + 1];
+
+            // Note: assumes increasing 'j' along increasing X axis and Y axis and
+            // increasing 'i' along decreasing Y axis.
+            // 'j' along image width. 'i' along image height.
+            const j = Math.round((x - xmin) / dx);
+            const i = h - Math.round((y - ymin) / dy);
+            const pixelNo = i * w + j;
+
+            // Check alpha (transparency) for this triangle corner.
+            const is_transparent = int_view[pixelNo * 4 + 3] < 255;
+            return is_transparent;
+        });
+
+        const do_remove = alphas.some((a) => a);
+
+        if (!do_remove) {
+            indices_reduced.push(i0);
+            indices_reduced.push(i1);
+            indices_reduced.push(i2);
+        }
+    }
+
+    resolved_mesh.indices.value = new Uint32Array(indices_reduced);
+    indices = resolved_mesh.indices.value;
+    ntriangles = indices.length / 3;
+
+    ////////////////////////////////////////////////////////////////
+    // Calculate one normal pr triangle. And record the triangles each vertex' belongs to.
     const no_unique_vertexes = vertexs.length / 3;
     const vertex_triangles = Array(no_unique_vertexes); // for each vertex a list of triangles it belongs to.
     for (let i = 0; i < no_unique_vertexes; i++) {
@@ -120,7 +214,7 @@ function add_normals(resolved_mesh: MeshType) {
 
 async function load_mesh_and_texture(
     mesh_name: string,
-    bounds: [number, number, number, number],
+    bounds: Bounds,
     meshMaxError: number,
     meshValueRange: [number, number],
     enableSmoothShading: boolean,
@@ -130,8 +224,15 @@ async function load_mesh_and_texture(
     const isTexture = texture_name !== "";
 
     if (!isMesh && !isTexture) {
-        console.log("Error. One or both of texture and mesh must be given!");
+        console.error("Error. One or both of texture and mesh must be given!");
     }
+
+    const image_name = isTexture ? texture_name : mesh_name;
+    const texture = await load(image_name, ImageLoader, {
+        image: { type: "data" }, // Will load as ImageData.
+    });
+
+    let meshImageData = null;
 
     let mesh: MeshType;
     if (isMesh) {
@@ -148,21 +249,22 @@ async function load_mesh_and_texture(
         // Remap height to meshValueRange
         mesh = mapToRange(mesh, meshValueRange);
 
+        meshImageData = await load(mesh_name, ImageLoader, {
+            image: { type: "data" }, // Will load as ImageData.
+        });
+
         // Note: mesh contains triangles. No normals they must be added.
         if (enableSmoothShading) {
-            mesh = add_normals(mesh);
+            mesh = add_normals(mesh, meshImageData, bounds);
         }
     } else {
         // Mesh data is missing.
-        // Make a flat square size of bounds using two triangles.  z = 0.
-        const left = bounds[0];
-        const bottom = bounds[1];
-        const right = bounds[2];
-        const top = bounds[3];
-        const p0 = [left, bottom, 0.0];
-        const p1 = [left, top, 0.0];
-        const p2 = [right, top, 0.0];
-        const p3 = [right, bottom, 0.0];
+        // Make a flat square size of enclosing dim using two triangles.  z = 0.
+        const [minX, minY, maxX, maxY] = bounds;
+        const p0 = [minX, minY, 0.0];
+        const p1 = [minX, maxY, 0.0];
+        const p2 = [maxX, maxY, 0.0];
+        const p3 = [maxX, minY, 0.0];
         const vertexes = [...p0, ...p1, ...p2, ...p3];
         const texture_coord = [0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 1.0, 1.0];
 
@@ -175,18 +277,21 @@ async function load_mesh_and_texture(
         };
     }
 
-    const image_name = isTexture ? texture_name : mesh_name;
-    const texture = await load(image_name, ImageLoader, {});
-
-    return Promise.all([mesh, texture]);
+    return Promise.all([mesh, meshImageData, texture]);
 }
 
 export interface Map3DLayerProps<D> extends ExtendedLayerProps<D> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    setReportedBoundingBox?: any;
+
     // Url to png image representing the height mesh.
     mesh: string;
 
-    // Bounding box of the terrain mesh, [minX, minY, maxX, maxY] in world coordinates
-    bounds: [number, number, number, number];
+    // Horizontal extent of the terrain mesh.
+    frame?: Frame;
+
+    // Deprecated: mesh's horizonal extent as [xmin, ymin, xmax, ymax]
+    bounds?: [number, number, number, number];
 
     // Mesh error in meters. The output mesh is in higher resolution (more vertices) if the error is smaller.
     meshMaxError: number;
@@ -194,8 +299,11 @@ export interface Map3DLayerProps<D> extends ExtendedLayerProps<D> {
     // Url to png image for map properties. (ex, poro or perm values as a texture)
     propertyTexture: string;
 
-    // Rotates around 'bounds' upper left corner counterclockwise in degrees.
-    rotDeg: number;
+    // Deprecated: Rotates map counterclockwise in degrees around 'rotPoint' specified below.
+    rotDeg?: number;
+
+    // Deprecated: Point to rotate around using 'rotDeg'. Defaults to mesh origin.
+    rotPoint?: [number, number];
 
     // Contourlines reference point and interval.
     // A value of [-1.0, -1.0] will disable contour lines.
@@ -231,9 +339,6 @@ export interface Map3DLayerProps<D> extends ExtendedLayerProps<D> {
     // Takes a value in the range [0,1] and returns a color.
     colorMapFunction?: colorMapFunctionType;
 
-    // If true readout will be z value (depth). Otherwise it is the texture property value.
-    isReadoutDepth: boolean;
-
     // Will calculate normals and enable phong shading.
     enableSmoothShading: boolean;
 
@@ -256,20 +361,58 @@ export default class Map3DLayer extends CompositeLayer<
 > {
     initializeState(): void {
         // Load mesh and texture and store in state.
+        const isBounds = typeof this.props.bounds !== "undefined";
+        if (isBounds) {
+            console.warn('"bounds" is deprecated. Use "frame" instead.');
+        }
+
+        const isFrame = typeof this.props.frame !== "undefined";
+        const bounds = (
+            isFrame ? getMinMax(this.props.frame as Frame) : this.props.bounds
+        ) as Bounds;
+
         const p = load_mesh_and_texture(
             this.props.mesh,
-            this.props.bounds,
+            bounds,
             this.props.meshMaxError,
             this.props.meshValueRange,
             this.props.enableSmoothShading,
             this.props.propertyTexture
         );
 
-        p.then(([mesh, texture]) => {
+        p.then(([mesh, meshImageData, texture]) => {
             this.setState({
                 mesh,
+                meshImageData,
                 texture,
             });
+        });
+
+        // Report back calculated bounding box now that data is loaded.
+        p.then(() => {
+            const xinc = this.props.frame?.increment?.[0] ?? 0;
+            const yinc = this.props.frame?.increment?.[1] ?? 0;
+
+            const xcount = this.props.frame?.count?.[0] ?? 1;
+            const ycount = this.props.frame?.count?.[1] ?? 1;
+
+            const xMin = this.props.frame?.origin?.[0] ?? 0;
+            const yMin = this.props.frame?.origin?.[0] ?? 0;
+            const zMin = -this.props.meshValueRange[1];
+            const xMax = xMin + xinc * xcount;
+            const yMax = yMin + yinc * ycount;
+            const zMax = -this.props.meshValueRange[0];
+
+            if (typeof this.props.setReportedBoundingBox !== "undefined") {
+                this.props.setReportedBoundingBox([
+                    xMin,
+                    yMin,
+                    zMin,
+                    xMax,
+                    yMax,
+                    zMax,
+                ]);
+            }
         });
     }
 
@@ -283,6 +426,7 @@ export default class Map3DLayer extends CompositeLayer<
         const needs_reload =
             !isEqual(props.mesh, oldProps.mesh) ||
             !isEqual(props.bounds, oldProps.bounds) ||
+            !isEqual(props.frame, oldProps.frame) ||
             !isEqual(props.meshMaxError, oldProps.meshMaxError) ||
             !isEqual(props.meshValueRange, oldProps.meshValueRange) ||
             !isEqual(props.enableSmoothShading, oldProps.enableSmoothShading) ||
@@ -295,15 +439,42 @@ export default class Map3DLayer extends CompositeLayer<
     }
 
     renderLayers(): [TerrainMapLayer] {
+        const isBounds = typeof this.props.bounds !== "undefined";
+        const bounds = (
+            isBounds ? this.props.bounds : getMinMax(this.props.frame as Frame)
+        ) as Bounds;
+
+        // Note: these are deprecated so this code may be deleted later.
+        const isRotDegDefined = typeof this.props.rotDeg !== "undefined";
+        const isRotPointDefined = typeof this.props.rotPoint !== "undefined";
+
+        if (isRotDegDefined) {
+            console.warn('"rotDeg" is deprecated. Use "frame.rotDeg" instead.');
+        }
+
+        if (isRotPointDefined) {
+            console.warn(
+                '"rotPoint" is deprecated. Use "frame.rotPoint" instead.'
+            );
+        }
+
+        const [minX, minY] = [bounds[0], bounds[1]];
+        const center =
+            this.props.frame?.rotPoint ??
+            ((isRotPointDefined ? this.props.rotPoint : [minX, minY]) as [
+                number,
+                number
+            ]);
+
         const rotatingModelMatrix = getModelMatrix(
-            this.props.rotDeg,
-            this.props.bounds[0] as number, // Rotate around upper left corner of bounds
-            this.props.bounds[3] as number
+            this.props.frame?.rotDeg ??
+                ((isRotDegDefined ? this.props.rotDeg : 0) as number),
+            center[0],
+            center[1]
         );
 
         const isMesh =
             typeof this.props.mesh !== "undefined" && this.props.mesh !== "";
-
         const layer = new TerrainMapLayer(
             this.getSubLayerProps<
                 TerrainMapLayerData,
@@ -311,6 +482,9 @@ export default class Map3DLayer extends CompositeLayer<
             >({
                 mesh: this.state.mesh,
                 texture: this.state.texture,
+                textureImageData: this.state.texture,
+                meshImageData: this.state.meshImageData,
+                meshValueRange: this.props.meshValueRange,
                 pickable: this.props.pickable,
                 modelMatrix: rotatingModelMatrix,
                 contours: this.props.contours,
@@ -319,12 +493,28 @@ export default class Map3DLayer extends CompositeLayer<
                 propertyValueRange: this.props.propertyValueRange,
                 colorMapRange: this.props.colorMapRange,
                 colorMapClampColor: this.props.colorMapClampColor,
-                isReadoutDepth: this.props.isReadoutDepth,
                 isContoursDepth: !isMesh ? false : this.props.isContoursDepth,
                 material: this.props.material,
+                wireframe: false,
             })
         );
         return [layer];
+    }
+
+    getLegendData(): ContinuousLegendDataType {
+        const colorRange = this.props.colorMapRange;
+        const propertyRange =
+            this.props.propertyTexture && this.props.propertyValueRange;
+        const meshRange = this.props.mesh && this.props.meshValueRange;
+        const legendRange = colorRange || propertyRange || meshRange;
+
+        return {
+            discrete: false,
+            valueRange: legendRange,
+            colorName: this.props.colorMapName,
+            title: "Map3dLayer",
+            colorMapFunction: this.props.colorMapFunction,
+        };
     }
 }
 

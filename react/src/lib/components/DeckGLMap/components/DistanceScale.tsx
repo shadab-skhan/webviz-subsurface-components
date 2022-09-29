@@ -2,15 +2,15 @@ import React from "react";
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const convert = require("convert-units");
 
-interface scaleProps {
+export interface ScaleProps {
     // Needed the zoom value to calculate width in units
     zoom?: number;
     // Scale increment value
     incrementValue?: number | null;
     // Scale bar width in pixels per unit value
     widthPerUnit?: number | null;
-    // positioning the scale ruler based on x and y values
-    position?: number[] | null;
+    // additional css style to position the component
+    style?: Record<string, unknown>;
     // default unit for the scale ruler
     scaleUnit?: string;
 }
@@ -19,27 +19,23 @@ const roundToStep = function (num: number, step: number) {
     return Math.floor(num / step + 0.5) * step;
 };
 
-const DistanceScale: React.FC<scaleProps> = ({
+const DistanceScale: React.FC<ScaleProps> = ({
     zoom,
     incrementValue,
     widthPerUnit,
-    position,
+    style,
     scaleUnit,
-}: scaleProps) => {
-    if (!zoom || !widthPerUnit || !incrementValue || !position) return null;
-
+}: ScaleProps) => {
+    if (!zoom || !widthPerUnit || !incrementValue) return null;
     const [rulerWidth, setRulerWidth] = React.useState<number>(0);
     const widthInUnits = widthPerUnit / Math.pow(2, zoom);
-    const scaleRulerStyle = {
+    const scaleRulerStyle: React.CSSProperties = {
         width: rulerWidth,
         height: "4px",
-        border: "2px solid gray",
+        border: "2px solid",
         borderTop: "none",
         display: "inline-block",
         marginLeft: "3px",
-        marginRight: "3px",
-        right: 0,
-        bottom: 0,
     };
 
     const scaleValue =
@@ -57,13 +53,14 @@ const DistanceScale: React.FC<scaleProps> = ({
     return (
         <div
             style={{
-                bottom: position[0],
-                left: position[1],
-                position: "relative",
+                position: "absolute",
+                ...style,
             }}
         >
-            <label>{convertedValue.toFixed(0)}</label>
-            {convertedUnit}
+            <label style={{ ...style }}>
+                {convertedValue.toFixed(0)}
+                {convertedUnit}
+            </label>
             <div style={scaleRulerStyle}></div>
         </div>
     );
@@ -73,7 +70,6 @@ DistanceScale.defaultProps = {
     zoom: -3,
     incrementValue: 100,
     widthPerUnit: 100,
-    position: [10, 10],
     scaleUnit: "m",
 };
 

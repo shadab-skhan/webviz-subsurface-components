@@ -43,21 +43,17 @@ export const layersDefaultProps: Record<string, unknown> = {
         id: "map3d-layer-float32",
         pickable: true,
         visible: true,
-        // Url to png image for height field.
-        mesh: "",
-        // Mesh error in meters. The output mesh is in higher resolution (more vertices) if the error is smaller.
-        meshMaxError: { type: "number", value: 5 },
-        // Url to png image for map properties. (ex, poro or perm values as a texture)
-        propertyTexture: "",
-        // Bounding box of the terrain image, [minX, minY, maxX, maxY] in world coordinates
-        bounds: { type: "array", value: null, false: true, compare: true },
+        // Url for the height field.
+        meshUrl: "",
+        propertiesUrl: "",
+        bounds: { type: "object", value: null, false: true, compare: true },
         colorMapRange: { type: "array" },
-        rotDeg: 0,
         contours: [-1.0, -1.0],
-        // readout is default property value but if set to true it will be depth/z-value.
-        isReadoutDepth: true,
-        enableSmoothShading: true,
+        // If contour lines should follow depth or properties.
+        isContoursDepth: true,
+        gridLines: false,
     },
+
     Map3DLayer: {
         "@@type": "Map3DLayer",
         name: "Map 3D",
@@ -71,15 +67,10 @@ export const layersDefaultProps: Record<string, unknown> = {
         meshMaxError: { type: "number", value: 5 },
         // Url to png image for map properties. (ex, poro or perm values as a texture)
         propertyTexture: "",
-        // Bounding box of the terrain image, [minX, minY, maxX, maxY] in world coordinates
-        bounds: { type: "array", value: null, false: true, compare: true },
         propertyValueRange: { type: "array", value: [0, 1] },
-        rotDeg: 0,
         contours: [-1.0, -1.0],
         // If contour lines should follow depth or properties.
         isContoursDepth: true,
-        // readout is default property value but if set to true it will be depth/z-value.
-        isReadoutDepth: false,
         enableSmoothShading: true,
         material: true,
     },
@@ -98,11 +89,11 @@ export const layersDefaultProps: Record<string, unknown> = {
         id: "wells-layer",
         autoHighlight: true,
         opacity: 1,
-        lineWidthScale: 5,
-        pointRadiusScale: 8,
-        style: { dash: false },
+        lineWidthScale: 1,
+        pointRadiusScale: 1,
+        lineStyle: { dash: false },
         outline: true,
-        logRadius: 6,
+        logRadius: 10,
         logCurves: true,
         refine: true,
         visible: true,
@@ -140,6 +131,7 @@ export const layersDefaultProps: Record<string, unknown> = {
         name: "NorthArrow3D",
         id: "north-arrow-layer",
         visible: true,
+        color: [0, 0, 0, 1],
     },
     DrawingLayer: {
         "@@type": "DrawingLayer",

@@ -9,14 +9,15 @@ import { WellLog } from "./WellLogTypes";
 import { Template } from "./WellLogTemplateTypes";
 import { ColorTable } from "./ColorTableTypes";
 
-import { WellLogController } from "./WellLogView";
+import { WellLogController, WellPickProps } from "./WellLogView";
 
 import Scroller from "./Scroller";
 
 interface Props {
-    welllog: WellLog;
+    welllog: WellLog | undefined;
     template: Template;
     colorTables: ColorTable[];
+    wellpick?: WellPickProps;
     horizontal?: boolean;
     primaryAxis: string;
 
@@ -112,13 +113,11 @@ class WellLogViewWithScroller extends Component<Props> {
     // callback function from Scroller
     onScrollerScroll(x: number, y: number): void {
         const controller = this.controller;
-        if (controller) {
-            const fContent = this.props.horizontal ? x : y; // fraction
-            controller.scrollContentTo(fContent);
-
-            const posTrack = this.calcPosTrack(this.props.horizontal ? y : x);
-            controller.scrollTrackTo(posTrack);
-        }
+        if (!controller) return;
+        const fContent = this.props.horizontal ? x : y; // fraction
+        controller.scrollContentTo(fContent);
+        const posTrack = this.calcPosTrack(this.props.horizontal ? y : x);
+        controller.scrollTrackTo(posTrack);
     }
 
     calcPosTrack(f: number): number {
@@ -201,6 +200,7 @@ class WellLogViewWithScroller extends Component<Props> {
                     welllog={this.props.welllog}
                     template={this.props.template}
                     colorTables={this.props.colorTables}
+                    wellpick={this.props.wellpick}
                     horizontal={this.props.horizontal}
                     hideTitles={this.props.hideTitles}
                     hideLegend={this.props.hideLegend}

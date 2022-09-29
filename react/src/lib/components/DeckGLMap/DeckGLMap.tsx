@@ -1,4 +1,9 @@
-import Map, { ViewsType } from "./components/Map";
+import Map, {
+    ViewsType,
+    TooltipCallback,
+    ViewStateType,
+    BoundsAccessor,
+} from "./components/Map";
 import { MapMouseEvent } from "./components/Map";
 import React from "react";
 import PropTypes from "prop-types";
@@ -11,8 +16,7 @@ export interface DeckGLMapProps {
     id: string;
     resources?: Record<string, unknown>;
     layers?: Record<string, unknown>[];
-    bounds?: [number, number, number, number];
-    zoom?: number;
+    bounds?: [number, number, number, number] | BoundsAccessor;
     views?: ViewsType;
     coords?: {
         visible?: boolean | null;
@@ -23,7 +27,7 @@ export interface DeckGLMapProps {
         visible?: boolean | null;
         incrementValue?: number | null;
         widthPerUnit?: number | null;
-        position?: number[] | null;
+        cssStyle?: Record<string, unknown> | null;
     };
     coordinateUnit?: string;
     toolbar?: {
@@ -31,7 +35,7 @@ export interface DeckGLMapProps {
     };
     legend?: {
         visible?: boolean | null;
-        position?: number[] | null;
+        cssStyle?: Record<string, unknown> | null;
         horizontal?: boolean | null;
     };
     colorTables?: colorTablesArray;
@@ -42,7 +46,26 @@ export interface DeckGLMapProps {
      * Validate JSON datafile against schems
      */
     checkDatafileSchema?: boolean;
+
+    /**
+     * For get mouse events
+     */
     onMouseEvent?: (event: MapMouseEvent) => void;
+
+    getCameraPosition?: (input: ViewStateType) => void;
+    /**
+     * Range selection of the current well
+     */
+    selection?: {
+        well: string | undefined;
+        selection: [number | undefined, number | undefined] | undefined;
+    };
+
+    /**
+     * Override default tooltip with a callback.
+     */
+    getTooltip?: TooltipCallback;
+    cameraPosition?: ViewStateType | undefined;
 }
 
 const DeckGLMap: React.FC<DeckGLMapProps> = ({
@@ -50,7 +73,6 @@ const DeckGLMap: React.FC<DeckGLMapProps> = ({
     resources,
     layers,
     bounds,
-    zoom,
     views,
     coords,
     scale,
@@ -62,6 +84,10 @@ const DeckGLMap: React.FC<DeckGLMapProps> = ({
     setProps,
     checkDatafileSchema,
     onMouseEvent,
+    selection,
+    getTooltip,
+    cameraPosition,
+    getCameraPosition,
 }: DeckGLMapProps) => {
     // Contains layers data received from map layers by user interaction
     const [layerEditedData, setLayerEditedData] = React.useState(editedData);
@@ -109,7 +135,6 @@ const DeckGLMap: React.FC<DeckGLMapProps> = ({
                 resources={resources}
                 layers={layers}
                 bounds={bounds}
-                zoom={zoom}
                 views={views}
                 coords={coords}
                 scale={scale}
@@ -121,6 +146,10 @@ const DeckGLMap: React.FC<DeckGLMapProps> = ({
                 setEditedData={setEditedData}
                 checkDatafileSchema={checkDatafileSchema}
                 onMouseEvent={onMouseEvent}
+                selection={selection}
+                getTooltip={getTooltip}
+                cameraPosition={cameraPosition}
+                getCameraPosition={getCameraPosition}
             />
         </ReduxProvider>
     );
@@ -133,26 +162,6 @@ DeckGLMap.defaultProps = {
         viewports: [{ id: "main-view", show3D: false, layerIds: [] }],
     },
     checkDatafileSchema: false,
-};
-
-const arrayOfLength_propTypes = (
-    expectedLength: number,
-    optional: boolean,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    props: { [key: string]: any },
-    propName: string,
-    componentName: string
-) => {
-    if (optional && props[propName] == undefined) return null;
-    if (
-        !Array.isArray(props[propName]) ||
-        props[propName].length != expectedLength
-    ) {
-        return new Error(
-            `Prop ${propName} supplied to ${componentName} should be an array of length ${expectedLength}. Validation failed.`
-        );
-    }
-    return null;
 };
 
 DeckGLMap.propTypes = {
@@ -180,13 +189,9 @@ DeckGLMap.propTypes = {
 
     /**
      * Coordinate boundary for the view defined as [left, bottom, right, top].
+     * It can be either an array or a callback returning [number, number, number, number].
      */
-    bounds: arrayOfLength_propTypes.bind(null, 4, true),
-
-    /**
-     * Zoom level for the view.
-     */
-    zoom: PropTypes.number,
+    bounds: PropTypes.any,
 
     /**
      * Views configuration for map. If not specified, all the layers will be
@@ -200,7 +205,8 @@ DeckGLMap.propTypes = {
      *                  "id": "view_1",
      *                  "name"?: "View 1"
      *                  "show3D"?: false,
-     *                  "layerIds": ["layer-ids"]
+     *                  "layerIds": ["layer-ids"],
+     *                  "isSync?": true,
      *              }
      *          ]
      *      }
@@ -245,9 +251,9 @@ DeckGLMap.propTypes = {
          */
         widthPerUnit: PropTypes.number,
         /**
-         * Scale bar position in pixels.
+         * Scale bar css style can be used for positioning.
          */
-        position: PropTypes.arrayOf(PropTypes.number.isRequired),
+        cssStyle: PropTypes.objectOf(PropTypes.any),
     }),
 
     /**
@@ -275,9 +281,9 @@ DeckGLMap.propTypes = {
          */
         visible: PropTypes.bool,
         /**
-         * Legend position in pixels.
+         * Legend css style can be used for positioning.
          */
-        position: PropTypes.arrayOf(PropTypes.number.isRequired),
+        cssStyle: PropTypes.objectOf(PropTypes.any),
         /**
          * Orientation of color legend
          */
@@ -303,6 +309,25 @@ DeckGLMap.propTypes = {
      * Validate JSON datafile against schems
      */
     checkDatafileSchema: PropTypes.bool,
+
+    /**
+     * For get mouse events
+     */
+    onMouseEvent: PropTypes.func,
+
+    /**
+     * Range selection of the current well
+     */
+    //selection: PropTypes.shape({
+    //    /**
+    //     * Current well name
+    //     */
+    //	well: PropTypes.string,
+    //    /**
+    //     * [from/cuurrent, to]
+    //     */
+    //    selection: PropTypes.arrayOf(PropTypes.number)
+    //}),
 };
 
 export default DeckGLMap;

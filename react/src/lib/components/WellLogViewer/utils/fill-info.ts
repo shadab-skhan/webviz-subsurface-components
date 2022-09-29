@@ -16,38 +16,48 @@ import { ExtPlotOptions } from "./tracks";
 import { isScaleTrack } from "./tracks";
 import { getPlotType } from "./tracks";
 
-function getValue(
+function getValueOnInterval(
     x: number,
-    data: [],
+    rowPrev: number[],
+    row: number[],
     type: string
-): number /*|string for discrete?*/ {
-    let v = Number.NaN;
+): number {
+    if (rowPrev[0] == null) return Number.NaN;
+    if (type === "linestep") {
+        if (row[1] == null) return Number.NaN;
+        return row[1]; //!! not rowPrev[1] !!
+    }
+
+    const d = row[0] - rowPrev[0];
+    const f = x - rowPrev[0];
+    if (type === "dot") {
+        if (f < d * 0.5) {
+            if (rowPrev[1] == null) return Number.NaN;
+            return rowPrev[1];
+        }
+        if (row[1] == null) return Number.NaN;
+        return row[1];
+    }
+
+    // "line", "area", "gradientfill"
+    if (rowPrev[1] == null) return Number.NaN;
+    if (row[1] == null) return Number.NaN;
+    const mul = d ? (row[1] - rowPrev[1]) / d : 1.0;
+    return f * mul + rowPrev[1];
+}
+
+function getValue(x: number, data: [], type: string): number {
+    const v = Number.NaN;
     if (Number.isFinite(x)) {
         const n = data.length;
         for (let i = 0; i < n; i++) {
             const row = data[i];
-            if (row[0] == null) continue;
-            if (row[1] == null) continue;
+            //if (row[0] == null) continue;
+            //!! if (row[1] == null) continue;
             if (x < row[0]) {
                 if (!i) break;
-                else {
-                    const rowPrev = data[i - 1];
-                    if (rowPrev[0] == null || rowPrev[1] == null) break;
-                    if (type === "linestep") {
-                        v = row[1]; //!! not rowPrev[1] !!
-                    } else {
-                        const d = row[0] - rowPrev[0];
-                        const f = x - rowPrev[0];
-                        if (type === "dot") {
-                            v = f < d * 0.5 ? rowPrev[1] : row[1];
-                        } else {
-                            // "line", "area", "gradientfill"
-                            const mul = d ? (row[1] - rowPrev[1]) / d : 1.0;
-                            v = f * mul + rowPrev[1];
-                        }
-                    }
-                }
-                break;
+                const rowPrev = data[i - 1];
+                return getValueOnInterval(x, rowPrev, row, type);
             }
         }
     }
@@ -106,7 +116,6 @@ export function fillInfos(
     addScaleTrackInfos(infos, x, logController, tracks);
 
     // another tracks
-
     const allTracks = options?.allTracks;
     const grouping = options?.grouping;
 
@@ -116,15 +125,15 @@ export function fillInfos(
         const visible = allTracks || (iFrom <= iTrack && iTrack < iTo);
         iTrack++;
         if (!visible) continue;
-        const collapsed = collapsedTrackIds.indexOf(_track.id) >= 0;
+        const collapsed =
+            collapsedTrackIds && collapsedTrackIds.indexOf(_track.id) >= 0;
 
         const track = _track as GraphTrack;
         if (grouping === "by_track" && track.plots && track.plots.length) {
             infos.push({
                 name: track.options.label,
-                units: "",
-                color: "",
-                value: -999,
+                color: "", // dummy value
+                value: Number.NaN, // dummy value,
                 type: "track",
                 collapsed: collapsed,
                 trackId: track.id,
@@ -135,14 +144,16 @@ export function fillInfos(
             if (_track instanceof StackedTrack) {
                 const trackStacked = _track as StackedTrack;
                 const d = trackStacked.data;
-                let value = "";
+                let discrete = "";
+                let value = Number.NaN; // dummy value
                 let color = "";
                 if (d) {
                     // data is ready
                     for (let i = 0; i < d.length; i++) {
                         const p = d[i];
                         if (p.from <= x && x <= p.to) {
-                            value = p.name;
+                            value = p.code; // additional attribute to AreaData
+                            discrete = p.name;
                             color =
                                 "rgb(" +
                                 p.color.r +
@@ -160,6 +171,7 @@ export function fillInfos(
                     units: "",
                     color: color,
                     value: value,
+                    discrete: discrete,
                     type: "stacked", //??
                     trackId: trackStacked.id,
                 });

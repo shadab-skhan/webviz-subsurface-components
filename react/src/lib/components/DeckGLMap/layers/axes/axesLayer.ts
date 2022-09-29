@@ -6,9 +6,14 @@ import { COORDINATE_SYSTEM } from "@deck.gl/core";
 import { TextLayer, TextLayerProps } from "@deck.gl/layers";
 import { UpdateStateInfo } from "@deck.gl/core/lib/layer";
 import { Position3D } from "@deck.gl/core/utils/positions";
+import { RGBAColor } from "deck.gl";
 
 export interface AxesLayerProps<D> extends ExtendedLayerProps<D> {
     bounds: [number, number, number, number, number, number];
+    labelColor?: RGBAColor;
+    labelFontSize?: number;
+    fontFamily?: string;
+    axisColor?: RGBAColor;
 }
 
 type TextLayerData = {
@@ -38,7 +43,8 @@ export default class AxesLayer extends CompositeLayer<
             is_orthographic,
             tick_lines,
             tick_labels,
-            this.props.bounds
+            this.props.bounds,
+            this.props.labelFontSize
         );
 
         this.setState({ box_lines, tick_lines, textlayerData });
@@ -76,7 +82,8 @@ export default class AxesLayer extends CompositeLayer<
             is_orthographic,
             tick_lines,
             tick_labels,
-            this.props.bounds
+            this.props.bounds,
+            this.props.labelFontSize
         );
 
         this.setState({ box_lines, tick_lines, textlayerData });
@@ -141,11 +148,13 @@ export default class AxesLayer extends CompositeLayer<
             this.getSubLayerProps({
                 lines,
                 coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
+                color: this.props.axisColor || [0, 0, 0, 255],
             })
         );
 
         const text_layer = new TextLayer(
             this.getSubLayerProps({
+                fontFamily: this.props.fontFamily ?? "Monaco, monospace",
                 data: this.state.textlayerData,
                 id: "text-layer",
                 pickable: true,
@@ -159,6 +168,7 @@ export default class AxesLayer extends CompositeLayer<
                 getAlignmentBaseline: (d: TextLayerData) =>
                     this.getBaseLine(d, is_orthographic),
                 coordinateSystem: COORDINATE_SYSTEM.CARTESIAN,
+                getColor: this.props.labelColor || [0, 0, 0, 255],
             })
         );
 
@@ -194,7 +204,8 @@ function maketextLayerData(
     is_orthographic: boolean,
     tick_lines: number[],
     tick_labels: string[],
-    bounds: [number, number, number, number, number, number]
+    bounds: [number, number, number, number, number, number],
+    labelFontSize?: number
 ): [TextLayerData] {
     const x_min = bounds[0];
     const x_max = bounds[3];
@@ -215,13 +226,13 @@ function maketextLayerData(
             label: "X",
             from: [0.0, 0.0, 0.0],
             to: [x_max + offset, y_min, z_min],
-            size: 26,
+            size: labelFontSize ?? 26,
         },
         {
             label: "Y",
             from: [0.0, 0.0, 0.0],
             to: [x_min, y_max + offset, z_min],
-            size: 26,
+            size: labelFontSize ?? 26,
         },
     ];
 
@@ -230,7 +241,7 @@ function maketextLayerData(
             label: "Z",
             from: [0.0, 0.0, 0.0],
             to: [x_min, y_min, z_max + offset],
-            size: 26,
+            size: labelFontSize ?? 26,
         };
         data.push(z_axis_annotaion);
     }
@@ -248,7 +259,12 @@ function maketextLayerData(
         ];
         const label = tick_labels[i];
 
-        data.push({ label: label, from: from, to: to, size: 11 });
+        data.push({
+            label: label,
+            from: from,
+            to: to,
+            size: labelFontSize ?? 11,
+        });
     }
 
     return data as [TextLayerData];
