@@ -237,6 +237,55 @@ MapLayer3dPng.parameters = {
     },
 };
 
+export const ResetCameraProperty: ComponentStory<typeof DeckGLMap> = (args) => {
+    const [home, setHome] = React.useState<number>(0);
+
+    const handleChange = () => {
+        setHome(home + 1);
+    };
+
+    const props = {
+        ...args,
+        triggerHome: home,
+    };
+
+    return (
+        <>
+            <div className={useStyles().main}>
+                <DeckGLMap {...props} />
+            </div>
+            <button onClick={handleChange}> Reset Camera </button>
+        </>
+    );
+};
+
+ResetCameraProperty.args = {
+    id: "map",
+    layers: [axes_hugin, meshMapLayerPng, north_arrow_layer],
+
+    bounds: [432150, 6475800, 439400, 6481500] as NumberQuad,
+    views: {
+        layout: [1, 1],
+        viewports: [
+            {
+                id: "view_1",
+                show3D: true,
+            },
+        ],
+    },
+};
+
+ResetCameraProperty.parameters = {
+    docs: {
+        ...defaultParameters.docs,
+        description: {
+            story: `Example using optional 'triggerHome' property.
+                    When this property is changed camera will reset to home position.
+                    Using the button the property will change its value.`,
+        },
+    },
+};
+
 export const MapLayer2d: ComponentStory<typeof DeckGLMap> = (args) => {
     return <DeckGLMap {...args} />;
 };
