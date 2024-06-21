@@ -1,4 +1,6 @@
 {
+    "$id": "inputSchema/WellLogTemplate.json",
+    "version": "0.1.0",
     "type": "object",
     "properties": {
         "name": { "type": "string" },

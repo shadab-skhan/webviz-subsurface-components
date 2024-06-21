@@ -1,6 +1,7 @@
 {
     "$comment": "PieChart data schema",
     "$id": "inputSchema/PieChart.json",
+    "version": "0.1.0",
     "type": "object",
     "properties": {
         "pies": {
